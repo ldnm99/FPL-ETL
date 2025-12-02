@@ -57,9 +57,9 @@ def upload_parquet(file_path, bucket="data"):
 
 
 # --------------------------
-# Main Execution
+# Main function for external calls
 # --------------------------
-if __name__ == "__main__":
+def main():
     data_dir = "Data"
 
     # Upload main files
@@ -78,3 +78,10 @@ if __name__ == "__main__":
 
     print("📁 last_updated.txt updated.")
     print("🎉 All uploads complete.")
+
+
+# --------------------------
+# Allow standalone execution
+# --------------------------
+if __name__ == "__main__":
+    main()
