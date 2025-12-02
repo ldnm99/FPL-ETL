@@ -27,7 +27,7 @@ def upload_csv(file_path, bucket="data"):
 
         res = supabase.storage.from_(bucket).upload(
             path=os.path.basename(file_path),
-            file=buffer.getvalue(),
+            file=buffer.getvalue().encode("utf-8"),  # convert string -> bytes
             file_options={"content-type": "text/csv", "upsert": "true"}
         )
 
