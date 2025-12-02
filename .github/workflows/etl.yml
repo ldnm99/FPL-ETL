@@ -1,0 +1,32 @@
+name: Run ETL Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # allow manual runs
+
+jobs:
+  etl_job:
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt || pip install pandas pyarrow supabase python-dotenv
+
+      - name: Run ETL main script
+        run: |
+          python main.py
