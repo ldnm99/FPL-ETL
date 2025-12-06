@@ -5,7 +5,9 @@ on:
     branches:
       - main
   workflow_dispatch:  # allow manual runs
-
+  repository_dispatch: # allow external triggers
+    types: [run_pipeline]
+    
 jobs:
   etl_job:
     runs-on: ubuntu-latest
