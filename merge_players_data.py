@@ -203,9 +203,14 @@ def main():
 
     logging.info(f"Already have data for GWs: {sorted(existing_gws)}")
 
-    # Only rebuild and overwrite the last 2 gameweeks, keep earlier files untouched
-    last_two_gws = [gw for gw in range(max(1, current_gw - 1), current_gw + 1)]
-    for gw in last_two_gws:
+    # Update the current gameweek and the last already processed gameweek (if any)
+    to_update = set()
+    if existing_gws:
+        last_processed_gw = max(existing_gws)
+        if last_processed_gw != current_gw:
+            to_update.add(last_processed_gw)
+    to_update.add(current_gw)
+    for gw in sorted(to_update):
         gw_df = build_gameweek_data(gw, managers, players_df)
         if not gw_df.empty:
             save_gameweek(gw_df, gw)
