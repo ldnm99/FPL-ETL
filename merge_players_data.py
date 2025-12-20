@@ -203,21 +203,18 @@ def main():
 
     logging.info(f"Already have data for GWs: {sorted(existing_gws)}")
 
-    # Update the current gameweek and the last already processed gameweek (if any)
-    to_update = set()
-    if existing_gws:
-        last_processed_gw = max(existing_gws)
-        if last_processed_gw != current_gw:
-            to_update.add(last_processed_gw)
-    to_update.add(current_gw)
-    for gw in sorted(to_update):
+    for gw in range(1, current_gw + 1):
+        # Skip past GWs if already saved
+        #if gw < current_gw and gw in existing_gws:
+        #    logging.info(f"Skipping Gameweek {gw} (already saved)")
+        #    continue
         gw_df = build_gameweek_data(gw, managers, players_df)
         if not gw_df.empty:
             save_gameweek(gw_df, gw)
             logging.info(f"Saved Gameweek {gw}")
         else:
             logging.warning(f"No data for Gameweek {gw}")
-
+            
     # Rebuild master dataset
     merge_all_gameweeks()
 
