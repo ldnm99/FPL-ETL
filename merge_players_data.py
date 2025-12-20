@@ -203,15 +203,10 @@ def main():
 
     logging.info(f"Already have data for GWs: {sorted(existing_gws)}")
 
-    # Fetch only missing GWs
-    for gw in range(1, current_gw + 1):
-        # Skip past GWs if already saved
-        #if gw < current_gw and gw in existing_gws:
-        #    logging.info(f"Skipping Gameweek {gw} (already saved)")
-        #    continue
-        
+    # Fetch only the last 2 gameweeks
+    start_gw = max(1, current_gw - 1)
+    for gw in range(start_gw, current_gw + 1):
         gw_df = build_gameweek_data(gw, managers, players_df)
-        
         if not gw_df.empty:
             save_gameweek(gw_df, gw)
             logging.info(f"Saved Gameweek {gw}")
