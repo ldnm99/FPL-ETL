@@ -203,7 +203,7 @@ def main():
 
     logging.info(f"Already have data for GWs: {sorted(existing_gws)}")
 
-    for gw in range(1, current_gw + 1):
+    for gw in range(current_gw, current_gw + 1):
         # Skip past GWs if already saved
         #if gw < current_gw and gw in existing_gws:
         #    logging.info(f"Skipping Gameweek {gw} (already saved)")
