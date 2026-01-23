@@ -17,6 +17,11 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def load_players() -> pd.DataFrame:
     """Load player IDs and names from CSV."""
+    if not os.path.exists(PLAYERS_CSV):
+        logging.error(f"❌ Players CSV file not found: {PLAYERS_CSV}")
+        logging.info("Run get_player_data() first to generate this file.")
+        return pd.DataFrame()
+    
     df = pd.read_csv(PLAYERS_CSV)
     df = df.astype({"ID": int})
     return df
@@ -69,6 +74,12 @@ def build_gameweek_data(gw: int, managers: list[int], players_df: pd.DataFrame) 
 def save_gameweek(gw_df: pd.DataFrame, gw: int, standings_csv="Data/league_standings.csv"):
     """Save a single gameweek file."""
     os.makedirs(GW_FOLDER, exist_ok=True)
+    
+    if not os.path.exists(standings_csv):
+        logging.error(f"❌ League standings CSV not found: {standings_csv}")
+        logging.info("Run get_league_standings() first to generate this file.")
+        return
+    
     output_path = f"{GW_FOLDER}/gw_data_gw{gw}.parquet"
 
     # ✅ Read the CSV first

@@ -50,7 +50,7 @@ def get_player_data(output_file: str = "Data/players_data.csv"):
     data = fetch_data(PLAYER_DATA_URL)
     if not data or "elements" not in data:
         logging.error("No player data retrieved from API.")
-        return []
+        return pd.DataFrame()
     
     players = data["elements"]
 

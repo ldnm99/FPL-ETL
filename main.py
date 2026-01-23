@@ -9,7 +9,7 @@ import upload_database
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Constants
-LEAGUE_ID = '24636'
+LEAGUE_ID = os.environ.get("FPL_LEAGUE_ID", "24636")
 BASE_URL = "https://draft.premierleague.com/api"
 
 LEAGUE_DETAILS_URL = f"{BASE_URL}/league/{LEAGUE_ID}/details"

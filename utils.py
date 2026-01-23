@@ -16,16 +16,11 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 # Session for re-use
 session = requests.Session()
 
-
-# Database file
-DB_FILE = "fpl_data.db"
 # Define URLs
 BASE_URL        = "https://draft.premierleague.com/api"
 
-#Player data from the gameweek endpoint
+# Player data from the gameweek endpoint
 GW_URL      = f"{BASE_URL}/event/"
-
-session = requests.session()
 
 # ------------------ API HELPERS ------------------ #
 def fetch_data(url: str, retries: int = 3, delay: int = 2, timeout: int = 10) -> Optional[dict]:

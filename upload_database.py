@@ -1,8 +1,11 @@
 import pandas as pd
 import io
 import os
+import logging
 from supabase import create_client, Client
 from datetime import datetime, timezone
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # --------------------------
 # Supabase Client Setup
@@ -11,7 +14,10 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables")
+    logging.error("❌ Missing required environment variables")
+    logging.error("   Please set SUPABASE_URL and SUPABASE_SERVICE_KEY")
+    logging.error("   Example: export SUPABASE_URL='https://your-project.supabase.co'")
+    raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -31,10 +37,10 @@ def upload_csv(file_path, bucket="data"):
             file_options={"content-type": "text/csv", "upsert": "true"}
         )
 
-        print(f"✅ Uploaded CSV: {file_path}")
+        logging.info(f"✅ Uploaded CSV: {file_path}")
         return res
     except Exception as e:
-        print(f"❌ Error uploading CSV {file_path}: {e}")
+        logging.error(f"❌ Error uploading CSV {file_path}: {e}")
 
 
 def upload_parquet(file_path, bucket="data"):
@@ -50,10 +56,10 @@ def upload_parquet(file_path, bucket="data"):
             file_options={"content-type": "application/octet-stream", "upsert": "true"}
         )
 
-        print(f"✅ Uploaded Parquet: {file_path}")
+        logging.info(f"✅ Uploaded Parquet: {file_path}")
         return res
     except Exception as e:
-        print(f"❌ Error uploading Parquet {file_path}: {e}")
+        logging.error(f"❌ Error uploading Parquet {file_path}: {e}")
 
 
 # --------------------------
@@ -68,16 +74,18 @@ def main():
     upload_parquet(os.path.join(data_dir, "gw_data.parquet"))
 
     # Upload individual gameweek parquet files
-    for f in os.listdir(data_dir):
-        if f.startswith("gw") and f.endswith(".parquet") and f != "gw_data.parquet":
-            upload_parquet(os.path.join(data_dir, f))
+    gw_folder = os.path.join(data_dir, "gameweeks_parquet")
+    if os.path.exists(gw_folder):
+        for f in os.listdir(gw_folder):
+            if f.endswith(".parquet"):
+                upload_parquet(os.path.join(gw_folder, f))
 
     # Write last updated timestamp
     with open("last_updated.txt", "w") as f:
         f.write(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
 
-    print("📁 last_updated.txt updated.")
-    print("🎉 All uploads complete.")
+    logging.info("📁 last_updated.txt updated.")
+    logging.info("🎉 All uploads complete.")
 
 
 # --------------------------
