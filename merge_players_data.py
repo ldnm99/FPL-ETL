@@ -214,11 +214,23 @@ def main():
 
     logging.info(f"Already have data for GWs: {sorted(existing_gws)}")
 
-    # Process only current and previous gameweek for faster incremental updates
-    gws_to_process = [current_gw - 1, current_gw] if current_gw > 1 else [current_gw]
-    logging.info(f"Processing GWs: {gws_to_process} (incremental mode)")
+    # Check for gaps in gameweek data
+    missing_gws = []
+    if existing_gws:
+        for gw in range(1, current_gw + 1):
+            if gw not in existing_gws:
+                missing_gws.append(gw)
 
-    for gw in gws_to_process:
+    if missing_gws:
+        logging.info(f"⚠️ Found gaps in GW data. Backfilling missing GWs: {missing_gws}")
+        gws_to_process = missing_gws + [current_gw - 1, current_gw] if current_gw > 1 else missing_gws + [current_gw]
+        logging.info(f"Processing GWs: {sorted(set(gws_to_process))} (backfill + incremental mode)")
+    else:
+        # Process only current and previous gameweek for faster incremental updates
+        gws_to_process = [current_gw - 1, current_gw] if current_gw > 1 else [current_gw]
+        logging.info(f"Processing GWs: {gws_to_process} (incremental mode - no gaps)")
+
+    for gw in sorted(set(gws_to_process)):
         gw_df = build_gameweek_data(gw, managers, players_df)
         if not gw_df.empty:
             save_gameweek(gw_df, gw)
