@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-from utils import fetch_data
+from src.utils import fetch_data
 
 # Define URLs
 BASE_URL            = "https://draft.premierleague.com/api"

@@ -6,6 +6,45 @@
 
 A robust ETL (Extract, Transform, Load) pipeline for collecting and processing Fantasy Premier League (FPL) draft league data. This project extracts real-time player statistics, league standings, and manager picks from the official FPL API and uploads them to Supabase for storage and analysis.
 
+## 📁 Project Structure
+
+```
+FPL-ETL/
+├── src/                           # Source code
+│   ├── __init__.py               # Package initialization
+│   ├── main.py                   # Pipeline entry point
+│   ├── utils.py                  # Shared utilities & API helpers
+│   └── etl/                      # ETL modules
+│       ├── __init__.py
+│       ├── league.py             # League standings extraction
+│       ├── players.py            # Player data extraction
+│       ├── merge_players_data.py # Gameweek data merging
+│       └── upload_database.py    # Supabase storage upload
+├── data/                          # Generated data (auto-created)
+│   ├── league_standings.csv      # Manager & team info
+│   ├── players_data.csv          # Player seasonal stats
+│   ├── gw_data.parquet           # Merged gameweek data
+│   └── gameweeks_parquet/        # Individual gameweek files
+├── docs/                          # Documentation
+│   └── DEPENDENCY_MANAGEMENT.md  # Dependency management guide
+├── .github/workflows/             # GitHub Actions
+│   └── etl.yml                   # Pipeline automation
+├── .env                          # Environment variables (not committed)
+├── .env.example                  # Environment template
+├── .gitignore                    # Git ignore rules
+├── requirements.txt              # Direct dependencies
+├── requirements.lock             # Locked dependency tree
+└── README.md                     # This file
+```
+
+## 🎯 Features
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![Status](https://img.shields.io/badge/Status-Active-brightgreen)
+![Code Quality](https://img.shields.io/badge/Pylint-10%2F10-success)
+
+A robust ETL (Extract, Transform, Load) pipeline for collecting and processing Fantasy Premier League (FPL) draft league data. This project extracts real-time player statistics, league standings, and manager picks from the official FPL API and uploads them to Supabase for storage and analysis.
+
 ## 🎯 Overview
 
 The FPL-ETL pipeline automates the collection of FPL draft league data including:
@@ -38,6 +77,10 @@ Perfect for fantasy football analysis, league management dashboards, and data-dr
 
 2. **Install dependencies:**
    ```bash
+   # For CI/CD (faster - uses locked versions)
+   pip install -r requirements.lock
+   
+   # For local development (flexible - uses version ranges)
    pip install -r requirements.txt
    ```
 
@@ -56,7 +99,11 @@ Perfect for fantasy football analysis, league management dashboards, and data-dr
 
 4. **Run the pipeline:**
    ```bash
-   python main.py
+   # Using Python module path (recommended)
+   python -m src.main
+   
+   # Or from the src directory
+   cd src && python main.py
    ```
 
 ---
@@ -92,33 +139,16 @@ Perfect for fantasy football analysis, league management dashboards, and data-dr
 
 ---
 
-## 📁 Project Structure
-
-```
-FPL-ETL/
-├── main.py                    # Main pipeline orchestrator
-├── league.py                  # League standings extraction
-├── players.py                 # Player data extraction
-├── merge_players_data.py      # Gameweek data merging & processing
-├── upload_database.py         # Supabase upload functionality
-├── utils.py                   # Shared utilities & API helpers
-├── Data/                      # Output directory
-│   ├── league_standings.csv   # Manager & team info
-│   ├── players_data.csv       # Player seasonal stats
-│   ├── gw_data.parquet        # Merged gameweek data
-│   └── gameweeks_parquet/     # Individual gameweek files
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
-```
-
----
-
 ## 🚀 Usage
 
 ### Running the Full Pipeline
 
 ```bash
-python main.py
+# From project root
+python -m src.main
+
+# Or from src directory
+cd src && python main.py
 ```
 
 This will:
@@ -133,25 +163,25 @@ This will:
 
 **Extract League Data Only:**
 ```python
-from league import get_league_standings
+from src.etl.league import get_league_standings
 get_league_standings('24636', output_file='Data/league_standings.csv')
 ```
 
 **Extract Player Data Only:**
 ```python
-from players import get_player_data
+from src.etl.players import get_player_data
 get_player_data(output_file='Data/players_data.csv')
 ```
 
 **Process Gameweek Data Only:**
 ```python
-import merge_players_data
+from src.etl import merge_players_data
 merge_players_data.main()
 ```
 
 **Upload to Supabase Only:**
 ```python
-import upload_database
+from src.etl import upload_database
 upload_database.main()
 ```
 
@@ -364,19 +394,47 @@ load_dotenv()
 
 ---
 
-## 📦 Dependencies
+## 📦 Dependencies & Dependency Management
 
-| Package | Purpose |
-|---------|---------|
-| `pandas` | Data manipulation & CSV/Parquet handling |
-| `requests` | HTTP API calls |
-| `supabase` | Supabase client & storage |
-| `pyarrow` | Parquet file format support |
+The project uses two requirements files for flexibility:
 
-Install all with:
+| File | Purpose | When to Use |
+|------|---------|------------|
+| `requirements.txt` | Direct dependencies with version ranges | Local development |
+| `requirements.lock` | Locked dependency tree (all transitive deps) | CI/CD, production |
+
+### Installing Dependencies
+
+**For local development (flexible):**
 ```bash
 pip install -r requirements.txt
 ```
+
+**For CI/CD (faster, uses locked versions):**
+```bash
+pip install -r requirements.lock
+```
+
+### Managing Dependencies
+
+To add a new package:
+```bash
+echo "new-package>=1.0" >> requirements.txt
+pip-compile requirements.txt -o requirements.lock
+pip install -r requirements.lock
+```
+
+**Details:** See [docs/DEPENDENCY_MANAGEMENT.md](docs/DEPENDENCY_MANAGEMENT.md)
+
+### Direct Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `pandas>=1.5.0` | Data manipulation & CSV/Parquet handling |
+| `requests>=2.28.0` | HTTP API calls |
+| `supabase>=1.0.0` | Supabase client & storage |
+| `pyarrow>=12.0.0` | Parquet file format support |
+| `python-dotenv>=1.0.0` | Environment variable loading |
 
 ---
 

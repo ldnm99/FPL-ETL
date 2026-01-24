@@ -1,7 +1,7 @@
 import logging
 import os
 import pandas as pd
-from utils import fetch_data, fetch_managers_ids, get_player_gw_data
+from src.utils import fetch_data, fetch_managers_ids, get_player_gw_data
 
 # ------------------ CONFIG ------------------ #
 BASE_URL        = "https://draft.premierleague.com/api"

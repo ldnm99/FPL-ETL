@@ -1,9 +1,14 @@
 import os
 import logging
-import merge_players_data
-from league import get_league_standings
-from players import get_player_data
-import upload_database
+import sys
+
+# Add parent directory to path for relative imports
+sys.path.insert(0, os.path.dirname(__file__))
+
+from etl import merge_players_data
+from etl.league import get_league_standings
+from etl.players import get_player_data
+from etl import upload_database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

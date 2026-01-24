@@ -28,8 +28,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt || pip install pandas pyarrow supabase python-dotenv requests
+          pip install -r requirements.lock --no-deps || pip install -r requirements.txt
 
       - name: Run ETL main script
         run: |
-          python main.py
+          python -m src.main

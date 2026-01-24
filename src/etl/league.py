@@ -1,5 +1,5 @@
 import logging
-from utils import fetch_data,save_csv
+from src.utils import fetch_data, save_csv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
