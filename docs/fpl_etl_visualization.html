@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPL ETL - Medallion Architecture & Dimensional Model</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bronze: #CD7F32;
+            --silver: #C0C0C0;
+            --gold: #FFD700;
+            --primary: #2563eb;
+            --bg-dark: #1e293b;
+            --bg-light: #f8fafc;
+            --text-dark: #0f172a;
+            --text-light: #64748b;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #334155 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            background: var(--bg-light);
+            border-bottom: 2px solid #e2e8f0;
+            padding: 0 2rem;
+            overflow-x: auto;
+        }
+        
+        .nav-tab {
+            padding: 1rem 2rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-light);
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        
+        .nav-tab:hover {
+            color: var(--primary);
+        }
+        
+        .nav-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .medallion-flow {
+            display: flex;
+            gap: 2rem;
+            margin: 2rem 0;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .layer-card {
+            flex: 1;
+            min-width: 250px;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .layer-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .layer-card.bronze {
+            background: linear-gradient(135deg, #D4A574 0%, var(--bronze) 100%);
+            color: white;
+        }
+        
+        .layer-card.silver {
+            background: linear-gradient(135deg, #E8E8E8 0%, var(--silver) 100%);
+            color: var(--text-dark);
+        }
+        
+        .layer-card.gold {
+            background: linear-gradient(135deg, #FFE66D 0%, var(--gold) 100%);
+            color: var(--text-dark);
+        }
+        
+        .layer-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+        }
+        
+        .layer-card ul {
+            list-style: none;
+            margin-top: 1rem;
+        }
+        
+        .layer-card li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .table-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .table-card {
+            background: var(--bg-light);
+            border-radius: 10px;
+            padding: 1.5rem;
+            border-left: 4px solid var(--primary);
+        }
+        
+        .table-card h4 {
+            color: var(--primary);
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .table-card table {
+            width: 100%;
+            font-size: 0.9rem;
+        }
+        
+        .table-card td {
+            padding: 0.5rem 0;
+        }
+        
+        .table-card td:first-child {
+            font-weight: 600;
+            color: var(--text-light);
+            width: 40%;
+        }
+        
+        .mermaid-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin: 2rem 0;
+            overflow-x: auto;
+        }
+        
+        .code-block {
+            background: var(--bg-dark);
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .highlight {
+            background: var(--gold);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+        
+        .info-box h4 {
+            color: #1e40af;
+            margin-bottom: 0.5rem;
+        }
+        
+        .success-box {
+            background: #f0fdf4;
+            border-left: 4px solid #22c55e;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+        
+        .success-box h4 {
+            color: #15803d;
+            margin-bottom: 0.5rem;
+        }
+        
+        h2 {
+            color: var(--bg-dark);
+            margin: 2rem 0 1rem;
+            font-size: 2rem;
+            border-bottom: 3px solid var(--primary);
+            padding-bottom: 0.5rem;
+        }
+        
+        h3 {
+            color: var(--primary);
+            margin: 1.5rem 0 1rem;
+            font-size: 1.5rem;
+        }
+        
+        footer {
+            background: var(--bg-dark);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            margin-top: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏆 FPL ETL Pipeline</h1>
+            <p>Medallion Architecture with Dimensional Modeling</p>
+        </header>
+        
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('overview')">📊 Overview</button>
+            <button class="nav-tab" onclick="showTab('medallion')">🥉🥈🥇 Medallion</button>
+            <button class="nav-tab" onclick="showTab('dimensional')">📐 Dimensional Model</button>
+            <button class="nav-tab" onclick="showTab('er-diagram')">🔗 ER Diagram</button>
+            <button class="nav-tab" onclick="showTab('tables')">📋 Tables</button>
+            <button class="nav-tab" onclick="showTab('usage')">🚀 Usage</button>
+        </div>
+        
+        <div class="content">
+            <!-- Overview Tab -->
+            <div id="overview" class="tab-content active">
+                <h2>System Overview</h2>
+                <p>The FPL ETL pipeline extracts Fantasy Premier League data and organizes it using a <strong>medallion architecture</strong> (Bronze, Silver, Gold layers) combined with <strong>dimensional modeling</strong> (star schema) for analytics.</p>
+                
+                <div class="success-box">
+                    <h4>✅ Key Features</h4>
+                    <ul>
+                        <li>🥉 <strong>Bronze Layer</strong>: Raw API data (incremental updates - last 2 gameweeks)</li>
+                        <li>🥈 <strong>Silver Layer</strong>: Cleaned and validated data</li>
+                        <li>🥇 <strong>Gold Layer</strong>: Analytics-ready star schema with dimensions and facts</li>
+                        <li>🔗 <strong>Relationships</strong>: Proper foreign keys connecting clubs → players → performance</li>
+                        <li>📊 <strong>Denormalized Table</strong>: Manager picks with performance for each gameweek</li>
+                    </ul>
+                </div>
+                
+                <div class="medallion-flow">
+                    <div class="layer-card bronze">
+                        <h3>🥉 Bronze</h3>
+                        <p><strong>Raw Data</strong></p>
+                        <ul>
+                            <li>league_standings_raw.json</li>
+                            <li>players_raw.json</li>
+                            <li>gameweeks/gw_*.json</li>
+                            <li>manager_picks/*.json</li>
+                        </ul>
+                        <p style="margin-top: 1rem; font-size: 0.9rem;">📥 Incremental: Last 2 GWs only</p>
+                    </div>
+                    
+                    <div class="layer-card silver">
+                        <h3>🥈 Silver</h3>
+                        <p><strong>Cleaned Data</strong></p>
+                        <ul>
+                            <li>league_standings.csv</li>
+                            <li>players_data.csv</li>
+                            <li>gameweeks_parquet/*.parquet</li>
+                        </ul>
+                        <p style="margin-top: 1rem; font-size: 0.9rem;">✅ Validated & Typed</p>
+                    </div>
+                    
+                    <div class="layer-card gold">
+                        <h3>🥇 Gold</h3>
+                        <p><strong>Analytics Ready</strong></p>
+                        <ul>
+                            <li>dimensions/ (4 tables)</li>
+                            <li>facts/ (3 tables)</li>
+                            <li>manager_gameweek_performance</li>
+                        </ul>
+                        <p style="margin-top: 1rem; font-size: 0.9rem;">⭐ Star Schema</p>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <h4>🔄 Incremental Updates</h4>
+                    <p>The Bronze layer now uses <strong>incremental updates</strong> - it only fetches the last 2 gameweeks instead of all historical data. This saves API calls and improves performance!</p>
+                </div>
+            </div>
+            
+            <!-- Medallion Tab -->
+            <div id="medallion" class="tab-content">
+                <h2>Medallion Architecture</h2>
+                
+                <h3>🥉 Bronze Layer - Raw Data</h3>
+                <p>Stores exact API responses in JSON format. <strong>Updated incrementally (last 2 gameweeks only)</strong>.</p>
+                <div class="code-block">
+Data/bronze/
+├── league_standings_raw.json    ← Manager & team info
+├── players_raw.json              ← All players from FPL
+├── gameweeks/
+│   ├── gw_24_raw.json           ← Only recent GWs updated
+│   └── gw_25_raw.json
+└── manager_picks/
+    ├── gw_24_manager_123.json
+    └── gw_25_manager_123.json
+                </div>
+                
+                <h3>🥈 Silver Layer - Cleaned Data</h3>
+                <p>Transformed and validated data in CSV/Parquet format.</p>
+                <div class="code-block">
+Data/silver/
+├── league_standings.csv
+├── players_data.csv
+└── gameweeks_parquet/
+    ├── gw_data_gw1.parquet
+    ├── gw_data_gw2.parquet
+    └── ...
+                </div>
+                
+                <h3>🥇 Gold Layer - Analytics Ready</h3>
+                <p>Star schema with dimensions, facts, and denormalized tables.</p>
+                <div class="code-block">
+Data/gold/
+├── dimensions/
+│   ├── dim_clubs.parquet         ← Premier League teams
+│   ├── dim_players.parquet       ← Players (linked to clubs)
+│   ├── dim_managers.parquet      ← FPL managers
+│   └── dim_gameweeks.parquet     ← Gameweek calendar
+└── facts/
+    ├── fact_player_performance.parquet
+    ├── fact_manager_picks.parquet
+    └── manager_gameweek_performance.parquet  ← 🎯 Main table!
+                </div>
+            </div>
+            
+            <!-- Dimensional Model Tab -->
+            <div id="dimensional" class="tab-content">
+                <h2>Dimensional Model (Star Schema)</h2>
+                
+                <h3>📊 Dimensions (Reference Data)</h3>
+                <div class="table-list">
+                    <div class="table-card">
+                        <h4>dim_clubs</h4>
+                        <table>
+                            <tr><td>club_id</td><td>Primary Key</td></tr>
+                            <tr><td>club_name</td><td>Full name</td></tr>
+                            <tr><td>short_name</td><td>3-letter code</td></tr>
+                            <tr><td>created_at</td><td>Timestamp</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="table-card">
+                        <h4>dim_players</h4>
+                        <table>
+                            <tr><td>player_key</td><td>Surrogate PK</td></tr>
+                            <tr><td>player_id</td><td>Natural key</td></tr>
+                            <tr><td>name</td><td>Player name</td></tr>
+                            <tr><td><span class="highlight">club_id</span></td><td>FK → dim_clubs</td></tr>
+                            <tr><td>position</td><td>GK/DEF/MID/FWD</td></tr>
+                            <tr><td>is_current</td><td>Current version?</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="table-card">
+                        <h4>dim_managers</h4>
+                        <table>
+                            <tr><td>manager_id</td><td>Primary Key</td></tr>
+                            <tr><td>first_name</td><td>First name</td></tr>
+                            <tr><td>last_name</td><td>Last name</td></tr>
+                            <tr><td>team_name</td><td>Fantasy team</td></tr>
+                            <tr><td>waiver_pick</td><td>Waiver order</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="table-card">
+                        <h4>dim_gameweeks</h4>
+                        <table>
+                            <tr><td>gameweek_id</td><td>Primary Key</td></tr>
+                            <tr><td>gameweek_num</td><td>1-38</td></tr>
+                            <tr><td>is_finished</td><td>Completed?</td></tr>
+                            <tr><td>is_current</td><td>Active GW?</td></tr>
+                            <tr><td>avg_score</td><td>Average points</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <h3>📈 Facts (Transaction Data)</h3>
+                <div class="table-list">
+                    <div class="table-card">
+                        <h4>fact_player_performance</h4>
+                        <table>
+                            <tr><td>performance_id</td><td>Primary Key</td></tr>
+                            <tr><td>player_id</td><td>FK → dim_players</td></tr>
+                            <tr><td><span class="highlight">club_id</span></td><td>FK → dim_clubs</td></tr>
+                            <tr><td>gameweek_id</td><td>FK → dim_gameweeks</td></tr>
+                            <tr><td>gw_points</td><td>Points scored</td></tr>
+                            <tr><td>gw_goals</td><td>Goals</td></tr>
+                            <tr><td>gw_assists</td><td>Assists</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="table-card">
+                        <h4>fact_manager_picks</h4>
+                        <table>
+                            <tr><td>pick_id</td><td>Primary Key</td></tr>
+                            <tr><td>manager_id</td><td>FK → dim_managers</td></tr>
+                            <tr><td>player_id</td><td>FK → dim_players</td></tr>
+                            <tr><td>gameweek_id</td><td>FK → dim_gameweeks</td></tr>
+                            <tr><td>position</td><td>Team position 1-15</td></tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="success-box">
+                    <h4>🎯 Special Table: manager_gameweek_performance</h4>
+                    <p>Denormalized table with <strong>all joins pre-computed</strong> for easy querying:</p>
+                    <ul>
+                        <li>✅ Manager info (name, team)</li>
+                        <li>✅ Player info (name, position)</li>
+                        <li>✅ Club info (club name, short name)</li>
+                        <li>✅ Performance stats (points, goals, assists)</li>
+                        <li>✅ Gameweek info (number, is_finished)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- ER Diagram Tab -->
+            <div id="er-diagram" class="tab-content">
+                <h2>Entity-Relationship Diagram</h2>
+                <p>Visual representation of all tables and their relationships with all columns.</p>
+                
+                <div class="mermaid-container">
+                    <div class="mermaid">
+erDiagram
+    dim_clubs ||--o{ dim_players : "has many"
+    dim_players ||--o{ fact_player_performance : "has stats"
+    dim_players ||--o{ fact_manager_picks : "is picked by"
+    dim_managers ||--o{ fact_manager_picks : "picks"
+    dim_gameweeks ||--o{ fact_player_performance : "contains"
+    dim_gameweeks ||--o{ fact_manager_picks : "contains"
+    dim_clubs ||--o{ fact_player_performance : "plays for"
+    
+    dim_clubs {
+        int club_id PK
+        string club_name
+        string short_name
+        timestamp created_at
+    }
+    
+    dim_players {
+        int player_key PK "Surrogate Key"
+        int player_id UK "Natural Key"
+        string name
+        int club_id FK "FOREIGN KEY"
+        string position "GK DEF MID FWD"
+        int code
+        date valid_from
+        date valid_to "NULL=current"
+        boolean is_current
+    }
+    
+    dim_managers {
+        int manager_id PK
+        string first_name
+        string last_name
+        string team_name
+        int waiver_pick
+        timestamp created_at
+    }
+    
+    dim_gameweeks {
+        int gameweek_id PK
+        int gameweek_num
+        string gameweek_name
+        timestamp deadline_time
+        boolean is_finished
+        boolean is_current
+        float avg_score
+        int highest_score
+    }
+    
+    fact_player_performance {
+        bigint performance_id PK
+        int player_key FK
+        int player_id FK
+        int club_id FK "FOREIGN KEY"
+        int gameweek_id FK
+        int gw_points
+        int gw_minutes
+        int gw_goals
+        int gw_assists
+        int gw_clean_sheets
+        int gw_goals_conceded
+        int gw_bonus
+        int gw_saves
+        int gw_yellow_cards
+        int gw_red_cards
+    }
+    
+    fact_manager_picks {
+        bigint pick_id PK
+        int manager_id FK
+        int player_id FK
+        int gameweek_id FK
+        int position "1-15"
+    }
+                    </div>
+                </div>
+                
+                <h3>Relationship Summary</h3>
+                <div class="info-box">
+                    <h4>🔗 Foreign Key Relationships</h4>
+                    <ul>
+                        <li><strong>dim_clubs → dim_players</strong>: One club has many players (1:N)</li>
+                        <li><strong>dim_clubs → fact_player_performance</strong>: One club has many performances (1:N)</li>
+                        <li><strong>dim_players → fact_player_performance</strong>: One player has many performances (1:N)</li>
+                        <li><strong>dim_players → fact_manager_picks</strong>: One player can be picked many times (1:N)</li>
+                        <li><strong>dim_managers → fact_manager_picks</strong>: One manager has many picks (1:N)</li>
+                        <li><strong>dim_gameweeks → fact_*</strong>: One gameweek has many facts (1:N)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Tables Tab -->
+            <div id="tables" class="tab-content">
+                <h2>Complete Table Definitions</h2>
+                
+                <h3>Dimension Tables</h3>
+                
+                <h4>1. dim_clubs (Premier League Teams)</h4>
+                <div class="code-block">
+Column        Type         Description
+─────────────────────────────────────────────────────
+club_id       INT          Primary Key
+club_name     VARCHAR      Full name (e.g., "Manchester City")
+short_name    VARCHAR(3)   3-letter code (e.g., "MCI")
+created_at    TIMESTAMP    When record was created
+
+Sample Data:
+club_id | club_name          | short_name
+1       | Arsenal            | ARS
+14      | Liverpool          | LIV
+43      | Manchester City    | MCI
+                </div>
+                
+                <h4>2. dim_players (Players with Club Link)</h4>
+                <div class="code-block">
+Column        Type         Description
+─────────────────────────────────────────────────────
+player_key    INT          Surrogate Primary Key
+player_id     INT          Natural Key (from FPL API)
+name          VARCHAR      Player name
+club_id       INT          FOREIGN KEY → dim_clubs.club_id
+position      VARCHAR      GK, DEF, MID, FWD
+code          INT          FPL player code
+valid_from    DATE         When this version became active
+valid_to      DATE         When expired (NULL if current)
+is_current    BOOLEAN      True for current version
+
+Sample Data:
+player_id | name       | club_id | position | is_current
+263       | M. Salah   | 14      | MID      | True
+308       | Haaland    | 43      | FWD      | True
+                </div>
+                
+                <h4>3. dim_managers (FPL Managers)</h4>
+                <div class="code-block">
+Column        Type         Description
+─────────────────────────────────────────────────────
+manager_id    INT          Primary Key
+first_name    VARCHAR      Manager first name
+last_name     VARCHAR      Manager last name
+team_name     VARCHAR      Fantasy team name
+waiver_pick   INT          Waiver order
+created_at    TIMESTAMP    When record was created
+                </div>
+                
+                <h4>4. dim_gameweeks (Gameweek Calendar)</h4>
+                <div class="code-block">
+Column          Type         Description
+─────────────────────────────────────────────────────
+gameweek_id     INT          Primary Key (1-38)
+gameweek_num    INT          Gameweek number
+gameweek_name   VARCHAR      Name (e.g., "Gameweek 1")
+deadline_time   TIMESTAMP    Deadline for picks
+is_finished     BOOLEAN      Has gameweek finished?
+is_current      BOOLEAN      Is this the current GW?
+avg_score       FLOAT        Average score across league
+highest_score   INT          Highest score in GW
+                </div>
+                
+                <h3>Fact Tables</h3>
+                
+                <h4>1. fact_player_performance (Player Stats per Gameweek)</h4>
+                <div class="code-block">
+Column              Type         Description
+─────────────────────────────────────────────────────
+performance_id      BIGINT       Surrogate Primary Key
+player_key          INT          FK → dim_players.player_key
+player_id           INT          FK → dim_players.player_id
+club_id             INT          FK → dim_clubs.club_id
+gameweek_id         INT          FK → dim_gameweeks.gameweek_id
+gw_points           INT          Points scored this gameweek
+gw_minutes          INT          Minutes played
+gw_goals            INT          Goals scored
+gw_assists          INT          Assists
+gw_clean_sheets     INT          Clean sheets (DEF/GK)
+gw_goals_conceded   INT          Goals conceded
+gw_bonus            INT          Bonus points
+gw_saves            INT          Saves (GK)
+gw_yellow_cards     INT          Yellow cards
+gw_red_cards        INT          Red cards
+                </div>
+                
+                <h4>2. fact_manager_picks (Manager Selections)</h4>
+                <div class="code-block">
+Column          Type         Description
+─────────────────────────────────────────────────────
+pick_id         BIGINT       Surrogate Primary Key
+manager_id      INT          FK → dim_managers.manager_id
+player_id       INT          FK → dim_players.player_id
+gameweek_id     INT          FK → dim_gameweeks.gameweek_id
+position        INT          Position in team (1-15)
+                </div>
+                
+                <h4>3. manager_gameweek_performance (Denormalized)</h4>
+                <div class="code-block">
+Column              Type         Description
+─────────────────────────────────────────────────────
+gameweek_num        INT          Gameweek number
+manager_id          INT          Manager ID
+first_name          VARCHAR      Manager first name
+last_name           VARCHAR      Manager last name
+manager_team_name   VARCHAR      Manager's fantasy team name
+player_id           INT          Player ID
+player_name         VARCHAR      Player name
+player_position     VARCHAR      Player position (GK/DEF/MID/FWD)
+club_name           VARCHAR      Premier League club name
+short_name          VARCHAR      Club 3-letter code
+team_position       INT          Position in manager's team (1-15)
+gw_points           INT          Points scored this gameweek
+gw_minutes          INT          Minutes played
+gw_goals            INT          Goals scored
+gw_assists          INT          Assists
+gw_clean_sheets     INT          Clean sheets
+gw_bonus            INT          Bonus points
+is_finished         BOOLEAN      Is gameweek finished?
+
+🎯 This is your main table for analyzing manager performance!
+                </div>
+            </div>
+            
+            <!-- Usage Tab -->
+            <div id="usage" class="tab-content">
+                <h2>How to Use</h2>
+                
+                <h3>🚀 Run the Pipeline</h3>
+                <div class="code-block">
+# Set environment variables
+$env:FPL_LEAGUE_ID = '24636'
+$env:SUPABASE_URL = 'https://your-project.supabase.co'
+$env:SUPABASE_SERVICE_KEY = 'your-service-key'
+
+# Run complete pipeline
+python -m src.main_medallion
+                </div>
+                
+                <h3>📊 Query Examples (Python/Pandas)</h3>
+                
+                <h4>Example 1: Get Manager's Team for Gameweek 10</h4>
+                <div class="code-block">
+import pandas as pd
+
+# Load denormalized table (all joins already done!)
+df = pd.read_parquet('Data/gold/facts/manager_gameweek_performance.parquet')
+
+# Filter for specific manager and gameweek
+my_team = df[(df['manager_id'] == 123) & (df['gameweek_num'] == 10)]
+
+# Display team performance
+print(my_team[['player_name', 'club_name', 'player_position', 
+               'gw_points', 'gw_goals', 'gw_assists']])
+
+# Output:
+#    player_name    club_name  player_position  gw_points  gw_goals  gw_assists
+# 0  M. Salah       Liverpool        MID            12         1          2
+# 1  Haaland        Man City         FWD            18         2          1
+# 2  Son            Spurs            MID             8         0          1
+                </div>
+                
+                <h4>Example 2: All Liverpool Players</h4>
+                <div class="code-block">
+import pandas as pd
+
+# Load dimensions
+players = pd.read_parquet('Data/gold/dimensions/dim_players.parquet')
+clubs = pd.read_parquet('Data/gold/dimensions/dim_clubs.parquet')
+
+# Join and filter
+players_clubs = players.merge(clubs, on='club_id')
+liverpool = players_clubs[players_clubs['club_name'] == 'Liverpool']
+
+print(liverpool[['name', 'position', 'club_name']])
+                </div>
+                
+                <h4>Example 3: Manager Performance Over Season</h4>
+                <div class="code-block">
+import pandas as pd
+
+# Load denormalized table
+df = pd.read_parquet('Data/gold/facts/manager_gameweek_performance.parquet')
+
+# Aggregate by manager and gameweek
+summary = df.groupby(['gameweek_num', 'manager_team_name']).agg({
+    'gw_points': 'sum'
+}).reset_index()
+
+# Calculate cumulative points
+summary['cumulative'] = summary.groupby('manager_team_name')['gw_points'].cumsum()
+
+print(summary)
+                </div>
+                
+                <h4>Example 4: Top Scorers by Club</h4>
+                <div class="code-block">
+import pandas as pd
+
+# Load fact and dimensions
+fact_perf = pd.read_parquet('Data/gold/facts/fact_player_performance.parquet')
+dim_players = pd.read_parquet('Data/gold/dimensions/dim_players.parquet')
+dim_clubs = pd.read_parquet('Data/gold/dimensions/dim_clubs.parquet')
+
+# Join all tables
+stats = fact_perf.merge(dim_players, on='player_id')
+stats = stats.merge(dim_clubs, on='club_id')
+
+# Aggregate
+top_scorers = stats.groupby(['club_name', 'name']).agg({
+    'gw_points': 'sum',
+    'gw_goals': 'sum'
+}).reset_index().sort_values('gw_points', ascending=False)
+
+print(top_scorers.head(10))
+                </div>
+                
+                <div class="success-box">
+                    <h4>✅ Benefits</h4>
+                    <ul>
+                        <li>🚀 <strong>Fast</strong>: Denormalized table = no joins needed</li>
+                        <li>🔗 <strong>Connected</strong>: All relationships properly linked via foreign keys</li>
+                        <li>📊 <strong>Analytics-Ready</strong>: Perfect for dashboards and BI tools</li>
+                        <li>♻️ <strong>Reprocessable</strong>: Rerun transformations without API calls</li>
+                        <li>📥 <strong>Incremental</strong>: Only updates last 2 gameweeks in Bronze layer</li>
+                    </ul>
+                </div>
+                
+                <h3>📂 Files Generated</h3>
+                <div class="code-block">
+Data/
+├── bronze/           # Raw API responses (last 2 GWs updated)
+├── silver/           # Cleaned CSV/Parquet
+└── gold/
+    ├── dimensions/   # 4 dimension tables
+    └── facts/        # 3 fact tables (including denormalized)
+
+Supabase: data/
+├── bronze/
+├── silver/
+└── gold/
+    ├── dimensions/
+    └── facts/
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p><strong>FPL ETL Pipeline</strong> | Medallion Architecture + Dimensional Modeling</p>
+            <p>Last Updated: February 2026</p>
+        </footer>
+    </div>
+    
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#3b82f6',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#1e40af',
+                lineColor: '#64748b',
+                secondaryColor: '#8b5cf6',
+                tertiaryColor: '#f59e0b'
+            }
+        });
+        
+        function showTab(tabName) {
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Remove active class from all nav tabs
+            const navTabs = document.querySelectorAll('.nav-tab');
+            navTabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked nav tab
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>

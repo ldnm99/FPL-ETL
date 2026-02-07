@@ -1,60 +1,146 @@
-# FPL-ETL: Fantasy Premier League Draft Data Pipeline
+# FPL-ETL: Fantasy Premier League Data Pipeline
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen)
-![Code Quality](https://img.shields.io/badge/Pylint-10%2F10-success)
+![Status](https://img.shields.io/badge/Status-Production-brightgreen)
+![Architecture](https://img.shields.io/badge/Architecture-Medallion-gold)
+![Model](https://img.shields.io/badge/Model-Star_Schema-purple)
 
-A robust ETL (Extract, Transform, Load) pipeline for collecting and processing Fantasy Premier League (FPL) draft league data. This project extracts real-time player statistics, league standings, and manager picks from the official FPL API and uploads them to Supabase for storage and analysis.
+A production-ready ETL pipeline for Fantasy Premier League (FPL) draft league data using **medallion architecture** (Bronze, Silver, Gold layers) and **dimensional modeling** (star schema) for analytics.
+
+## 🎯 Architecture Overview
+
+```
+API → Bronze (Raw JSON) → Silver (Cleaned) → Gold (Star Schema) → Supabase
+```
+
+**Bronze Layer**: Configurable - Full load OR incremental updates (last 2 gameweeks)  
+**Silver Layer**: Validated CSV/Parquet files with all 70+ player columns  
+**Gold Layer**: Dimensional model with 5 dimensions + 4 fact tables
+
+---
+
+## 🚀 Quick Start
+
+### First Run (Full Load - ALL Gameweeks)
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+
+# 3. Verify config.py has INCREMENTAL_MODE = False (default for first run)
+# src/config.py: INCREMENTAL_MODE: bool = False
+
+# 4. Run full pipeline
+python -m src.main_medallion
+
+# 5. Upload to Supabase
+python -m src.etl.upload_database
+```
+
+### Subsequent Runs (Incremental - Last 2 GWs Only)
+
+```bash
+# 1. Switch to incremental mode
+# Edit src/config.py: INCREMENTAL_MODE: bool = True
+
+# 2. Run pipeline (95% faster!)
+python -m src.main_medallion
+
+# 3. Upload updates
+python -m src.etl.upload_database
+```
+
+**See [INCREMENTAL_MODE_GUIDE.md](docs/INCREMENTAL_MODE_GUIDE.md) for detailed mode switching instructions.**
+
+---
 
 ## 📁 Project Structure
 
 ```
 FPL-ETL/
-├── src/                           # Source code
-│   ├── __init__.py               # Package initialization
-│   ├── main.py                   # Pipeline entry point
-│   ├── utils.py                  # Shared utilities & API helpers
-│   └── etl/                      # ETL modules
-│       ├── __init__.py
-│       ├── league.py             # League standings extraction
-│       ├── players.py            # Player data extraction
-│       ├── merge_players_data.py # Gameweek data merging
-│       └── upload_database.py    # Supabase storage upload
-├── data/                          # Generated data (auto-created)
-│   ├── league_standings.csv      # Manager & team info
-│   ├── players_data.csv          # Player seasonal stats
-│   ├── gw_data.parquet           # Merged gameweek data
-│   └── gameweeks_parquet/        # Individual gameweek files
-├── docs/                          # Documentation
-│   └── DEPENDENCY_MANAGEMENT.md  # Dependency management guide
-├── .github/workflows/             # GitHub Actions
-│   └── etl.yml                   # Pipeline automation
-├── .env                          # Environment variables (not committed)
-├── .env.example                  # Environment template
-├── .gitignore                    # Git ignore rules
-├── requirements.txt              # Direct dependencies
-├── requirements.lock             # Locked dependency tree
-└── README.md                     # This file
+├── src/                              # Source code
+│   ├── config.py                    # Centralized configuration
+│   ├── utils.py                     # API helpers & utilities
+│   ├── main_medallion.py            # Main pipeline orchestrator
+│   └── etl/                         # ETL modules
+│       ├── bronze.py                # Bronze: Raw data extraction (incremental)
+│       ├── silver.py                # Silver: Data cleaning & validation
+│       ├── gold.py                  # Gold: Aggregations
+│       ├── gold_dimensions.py       # Gold: Dimension tables (star schema)
+│       ├── gold_facts.py            # Gold: Fact tables (star schema)
+│       ├── gold_seasonal_stats.py   # Gold: Player seasonal stats
+│       └── upload_database.py       # Supabase upload (all layers)
+│
+├── Data/                             # Generated data (medallion structure)
+│   ├── bronze/                      # Raw JSON from API
+│   │   ├── league_standings_raw.json
+│   │   ├── players_raw.json
+│   │   ├── gameweeks/*.json         # Last 2 GWs updated
+│   │   └── manager_picks/*.json
+│   ├── silver/                      # Cleaned CSV/Parquet
+│   │   ├── league_standings.csv
+│   │   ├── players_data.csv         # ALL 70+ columns
+│   │   └── gameweeks_parquet/*.parquet
+│   └── gold/                        # Star schema (analytics-ready)
+│       ├── dimensions/              # 5 dimension tables
+│       │   ├── dim_clubs.parquet
+│       │   ├── dim_players.parquet  # 70+ columns
+│       │   ├── dim_managers.parquet
+│       │   ├── dim_gameweeks.parquet
+│       │   └── dim_fixtures.parquet # With difficulty ratings
+│       └── facts/                   # 4 fact tables
+│           ├── fact_player_performance.parquet      # Gameweek stats
+│           ├── fact_player_seasonal_stats.parquet   # Season totals
+│           ├── fact_manager_picks.parquet
+│           └── manager_gameweek_performance.parquet # Denormalized
+│
+├── docs/                             # Documentation
+│   ├── MEDALLION_ARCHITECTURE.md    # Architecture guide
+│   ├── DIMENSIONAL_MODEL.md         # Star schema details
+│   ├── UPDATED_DIMENSIONAL_MODEL.md # Latest model updates
+│   ├── QUICK_REFERENCE.md           # Quick start guide
+│   ├── fpl_etl_visualization.html   # Interactive visualization
+│   └── er_diagram.md                # Entity-relationship diagram
+│
+├── .github/workflows/
+│   └── etl.yml                      # Automated pipeline
+├── requirements.txt                 # Dependencies
+└── README.md                        # This file
 ```
 
-## 🎯 Features
+## 🎯 Key Features
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue)
-![Status](https://img.shields.io/badge/Status-Active-brightgreen)
-![Code Quality](https://img.shields.io/badge/Pylint-10%2F10-success)
+### Medallion Architecture (3 Layers)
+- 🥉 **Bronze**: Raw API data (JSON) - Full load first, then incremental (last 2 GWs)
+- 🥈 **Silver**: Cleaned & validated data (CSV/Parquet) - All 70+ player columns
+- 🥇 **Gold**: Star schema dimensional model - 5 dimensions + 4 facts
 
-A robust ETL (Extract, Transform, Load) pipeline for collecting and processing Fantasy Premier League (FPL) draft league data. This project extracts real-time player statistics, league standings, and manager picks from the official FPL API and uploads them to Supabase for storage and analysis.
+### Incremental vs Full Load Modes
+- **Full Load**: Extracts ALL gameweeks (GW1 to current) - ~3-4 minutes
+- **Incremental**: Extracts last 2 gameweeks only - ~25-30 seconds (95% faster!)
+- **Configuration**: Toggle via `INCREMENTAL_MODE` in `src/config.py`
+- See [INCREMENTAL_MODE_GUIDE.md](docs/INCREMENTAL_MODE_GUIDE.md)
 
-## 🎯 Overview
+### Dimensional Model (Star Schema)
+- **5 Dimensions**: clubs, players (70+ cols), managers, gameweeks, fixtures
+- **4 Fact Tables**: player performance, seasonal stats, manager picks, denormalized view
+- **Proper Relationships**: Foreign keys linking clubs → players → performance
 
-The FPL-ETL pipeline automates the collection of FPL draft league data including:
+### Complete Player Data
+- ✅ **70+ columns** from FPL API (all preserved)
+- ✅ **Seasonal stats**: total_points, goals, form, xG, now_cost
+- ✅ **Gameweek stats**: per-GW performance
+- ✅ **Fixture difficulty**: ratings for transfer planning
 
-- **League Standings**: Manager names, team information, and waiver pick order
-- **Player Statistics**: Real-time performance metrics (goals, assists, clean sheets, bonus points, etc.)
-- **Gameweek Data**: Player performance for each gameweek with manager team selections
-- **Historical Data**: Season-wide accumulation of stats with gameweek-level detail
-
-Perfect for fantasy football analysis, league management dashboards, and data-driven decision making.
+### Performance Optimizations
+- ⚡ **Incremental mode**: 95% faster (30 sec vs 4 min)
+- 📦 **Efficient storage**: Parquet files for analytics
+- 🔄 **Reprocessable**: Transform without re-calling APIs
+- 🤖 **Automated**: GitHub Actions scheduled runs
 
 ---
 
@@ -63,48 +149,45 @@ Perfect for fantasy football analysis, league management dashboards, and data-dr
 ### Prerequisites
 
 - **Python 3.8+**
-- **pip** (Python package manager)
-- **Supabase Account** (free tier available at [supabase.com](https://supabase.com))
-- Internet connection for API access
+- **Supabase Account** ([free tier](https://supabase.com))
+- **FPL Draft League ID**
 
 ### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd FPL-ETL
-   ```
+```bash
+# 1. Clone repository
+git clone <repository-url>
+cd FPL-ETL
 
-2. **Install dependencies:**
-   ```bash
-   # For CI/CD (faster - uses locked versions)
-   pip install -r requirements.lock
-   
-   # For local development (flexible - uses version ranges)
-   pip install -r requirements.txt
-   ```
+# 2. Install dependencies
+pip install -r requirements.txt
 
-3. **Set up environment variables:**
-   ```bash
-   # Linux/Mac
-   export FPL_LEAGUE_ID='24636'
-   export SUPABASE_URL='https://your-project.supabase.co'
-   export SUPABASE_SERVICE_KEY='your-service-key-here'
-   
-   # Windows PowerShell
-   $env:FPL_LEAGUE_ID = '24636'
-   $env:SUPABASE_URL = 'https://your-project.supabase.co'
-   $env:SUPABASE_SERVICE_KEY = 'your-service-key-here'
-   ```
+# 3. Set environment variables (Windows PowerShell)
+$env:FPL_LEAGUE_ID = '24636'
+$env:SUPABASE_URL = 'https://your-project.supabase.co'
+$env:SUPABASE_SERVICE_KEY = 'your-service-key'
 
-4. **Run the pipeline:**
-   ```bash
-   # Using Python module path (recommended)
-   python -m src.main
-   
-   # Or from the src directory
-   cd src && python main.py
-   ```
+# 4. Run medallion pipeline
+python -m src.main_medallion
+```
+
+### What Gets Created
+
+```
+Data/
+├── bronze/     # Raw JSON (last 2 gameweeks updated)
+├── silver/     # Cleaned CSV/Parquet
+└── gold/       # Star schema
+    ├── dimensions/ (5 tables)
+    └── facts/      (4 tables)
+
+Supabase: data/
+├── bronze/
+├── silver/
+└── gold/
+    ├── dimensions/
+    └── facts/
+```
 
 ---
 
@@ -141,131 +224,182 @@ Perfect for fantasy football analysis, league management dashboards, and data-dr
 
 ## 🚀 Usage
 
-### Running the Full Pipeline
+### Run Complete Pipeline
 
 ```bash
-# From project root
-python -m src.main
-
-# Or from src directory
-cd src && python main.py
+python -m src.main_medallion
 ```
 
-This will:
-1. ✅ Fetch league standings (managers & teams)
-2. ✅ Fetch all player data from the FPL database
-3. ✅ Extract gameweek data for all active gameweeks
-4. ✅ Merge player stats with manager picks
-5. ✅ Upload all data to Supabase
-6. ✅ Update `last_updated.txt` timestamp
+**Pipeline Flow**:
+1. 🥉 **Bronze**: Extract raw data (incremental - last 2 GWs)
+2. 🥈 **Silver**: Clean and validate
+3. 🥇 **Gold**: Create dimensional model (5 dims + 4 facts)
+4. ⬆️ **Upload**: Send to Supabase (bronze/, silver/, gold/)
 
-### Running Individual Components
+### Run Individual Layers
 
-**Extract League Data Only:**
-```python
-from src.etl.league import get_league_standings
-get_league_standings('24636', output_file='Data/league_standings.csv')
+```bash
+# Bronze only (extract raw data)
+python -m src.etl.bronze
+
+# Silver only (transform data)
+python -m src.etl.silver
+
+# Gold only (create star schema)
+python -m src.etl.gold
+
+# Upload only
+python -m src.etl.upload_database
 ```
 
-**Extract Player Data Only:**
+### Query Data (Python/Pandas)
+
+**Seasonal Stats (All 70+ Columns)**:
 ```python
-from src.etl.players import get_player_data
-get_player_data(output_file='Data/players_data.csv')
+import pandas as pd
+
+# Load player seasonal stats
+seasonal = pd.read_parquet('Data/gold/facts/fact_player_seasonal_stats.parquet')
+
+# Access all columns
+print(seasonal[['name', 'total_points', 'form', 'now_cost', 'xG', 'PpG']])
 ```
 
-**Process Gameweek Data Only:**
+**Manager's Team for Gameweek**:
 ```python
-from src.etl import merge_players_data
-merge_players_data.main()
+# Load denormalized table (all joins pre-computed)
+df = pd.read_parquet('Data/gold/facts/manager_gameweek_performance.parquet')
+
+# Filter for specific manager and gameweek
+team = df[(df['manager_id'] == 123) & (df['gameweek_num'] == 10)]
+print(team[['player_name', 'club_name', 'gw_points', 'gw_goals']])
 ```
 
-**Upload to Supabase Only:**
+**Fixtures with Difficulty Ratings**:
 ```python
-from src.etl import upload_database
-upload_database.main()
+fixtures = pd.read_parquet('Data/gold/dimensions/dim_fixtures.parquet')
+clubs = pd.read_parquet('Data/gold/dimensions/dim_clubs.parquet')
+
+# Join to get club names
+fixtures_full = fixtures.merge(
+    clubs.add_suffix('_home'),
+    left_on='home_club_id',
+    right_on='club_id_home'
+).merge(
+    clubs.add_suffix('_away'),
+    left_on='away_club_id',
+    right_on='club_id_away'
+)
+
+# Show upcoming easy fixtures
+easy = fixtures_full[
+    (fixtures_full['is_finished'] == False) &
+    (fixtures_full['home_difficulty'] <= 2)
+]
+print(easy[['club_name_home', 'club_name_away', 'home_difficulty']])
 ```
 
 ---
 
-## 📊 Output Files
+## 📊 Data Model
 
-### Data Files Generated
+### Dimensional Model (Star Schema)
 
-**1. `league_standings.csv`**
-- Manager IDs, names, and team information
-- Waiver pick order
-- Columns: `manager_id, id, first_name, last_name, short_name, waiver_pick, team_name`
+**5 Dimension Tables**:
 
-**2. `players_data.csv`**
-- Seasonal player statistics
-- Player identifiers and team assignments
-- Columns: `ID, name, team, position, assists, bonus, total_points, xA, CS, Gc, Goals Scored, minutes, red_cards, starts, xG, xGi, xGc, code, PpG`
+| Table | Description | Key Columns |
+|-------|-------------|-------------|
+| `dim_clubs` | Premier League teams | club_id, club_name, short_name |
+| `dim_players` | Players (70+ columns) | player_id, name, club_id, position, total_points, form, xG, now_cost |
+| `dim_managers` | FPL managers | manager_id, first_name, last_name, team_name |
+| `dim_gameweeks` | Gameweek calendar | gameweek_id, gameweek_num, is_finished, is_current |
+| `dim_fixtures` | Matches with difficulty | fixture_id, home_club_id, away_club_id, home_difficulty, away_difficulty |
 
-**3. `gw_data.parquet`**
-- Merged gameweek-level data with player stats and manager picks
-- One row per player per gameweek per manager
-- Comprehensive column names like `gw_points, gw_goals, gw_assists, season_points, manager_team_name, etc.`
+**4 Fact Tables**:
 
-**4. `gameweeks_parquet/gw_data_gwN.parquet`**
-- Individual gameweek files for detailed analysis
-- Helpful for incremental processing and storage efficiency
+| Table | Grain | Description |
+|-------|-------|-------------|
+| `fact_player_performance` | Player × Gameweek | Gameweek-specific stats (gw_points, gw_goals, etc.) |
+| `fact_player_seasonal_stats` | Player | Season totals (all 70+ columns) |
+| `fact_manager_picks` | Manager × Player × Gameweek | Manager selections |
+| `manager_gameweek_performance` | Manager × Player × Gameweek | Denormalized (all joins pre-computed) |
 
-### Data Stored in Supabase
+### Relationships
 
-All generated files are uploaded to your Supabase `data` storage bucket and can be:
-- Downloaded via Supabase dashboard
-- Accessed via Supabase API
-- Used in downstream applications
+```
+dim_clubs (1) ──→ (N) dim_players [club_id]
+            │
+            ├──→ (N) dim_fixtures [home_club_id]
+            │
+            └──→ (N) dim_fixtures [away_club_id]
+
+dim_players (1) ──→ (N) fact_player_performance [player_id]
+              │
+              ├──→ (N) fact_manager_picks [player_id]
+              │
+              └──→ (1) fact_player_seasonal_stats [player_id]
+
+dim_gameweeks (1) ──→ (N) fact_player_performance [gameweek_id]
+                │
+                ├──→ (N) fact_manager_picks [gameweek_id]
+                │
+                └──→ (N) dim_fixtures [gameweek_id]
+```
+
+### Complete Player Data (70+ Columns)
+
+Now includes ALL columns from FPL API:
+- **Seasonal totals**: total_points, goals, assists, minutes
+- **Expected stats**: xG, xA, xGi, xGc
+- **Form & value**: form, PpG, now_cost, selected_by_percent
+- **Influence**: influence, creativity, threat, ict_index
+- **Availability**: status, chance_of_playing, news
+- **Plus 50+ more columns**!
 
 ---
 
-## 🔄 Pipeline Logic
+## 🏗️ Architecture
 
-### Data Extraction Flow
+### Medallion Flow
 
 ```
-API (draft.premierleague.com)
-        ↓
-    ┌───────────────────────────────┐
-    │  League Data                  │
-    │  - Manager info               │
-    │  - Team standings             │
-    └────────→ league_standings.csv │
-        ↓
-    ┌───────────────────────────────┐
-    │  Player Data                  │
-    │  - Seasonal stats             │
-    │  - Demographics               │
-    └────────→ players_data.csv     │
-        ↓
-    ┌───────────────────────────────┐
-    │  Gameweek Data (Loop GW1→GWN) │
-    │  - Player stats per GW        │
-    │  - Manager picks per GW       │
-    └────────→ gw_data_gwN.parquet  │
-        ↓
-    ┌───────────────────────────────┐
-    │  Merge All Gameweeks          │
-    │  - Combine GW data            │
-    │  - Rename columns             │
-    │  - Add season stats           │
-    └────────→ gw_data.parquet      │
-        ↓
-    ┌───────────────────────────────┐
-    │  Upload to Supabase           │
-    │  - CSV files                  │
-    │  - Parquet files              │
-    │  - Update timestamp           │
-    └────────→ Supabase Storage     │
+FPL API
+   ↓
+🥉 Bronze Layer (Raw JSON)
+   │ - Incremental: Last 2 gameweeks only
+   │ - league_standings_raw.json
+   │ - players_raw.json (70+ columns preserved)
+   │ - gameweeks/gw_*.json
+   │ - manager_picks/*.json
+   ↓
+🥈 Silver Layer (Cleaned)
+   │ - Validated & typed data
+   │ - league_standings.csv
+   │ - players_data.csv (ALL columns)
+   │ - gameweeks_parquet/*.parquet
+   ↓
+🥇 Gold Layer (Star Schema)
+   │ - Dimensions (5 tables)
+   │   • dim_clubs, dim_players, dim_managers,
+   │     dim_gameweeks, dim_fixtures
+   │ - Facts (4 tables)
+   │   • fact_player_performance (gameweek)
+   │   • fact_player_seasonal_stats (season)
+   │   • fact_manager_picks
+   │   • manager_gameweek_performance (denormalized)
+   ↓
+☁️ Supabase Storage
+   └─ bronze/, silver/, gold/ folders
 ```
 
-### Key Features
+### Key Design Decisions
 
-- **Retry Logic**: API calls have automatic retry with exponential backoff
-- **Error Handling**: Comprehensive logging and error recovery
-- **Incremental Processing**: Gameweeks are processed and saved individually
-- **Data Validation**: CSV and file existence checks before processing
-- **Type Safety**: Consistent type handling throughout pipeline
+✅ **Incremental Bronze Updates**: Only last 2 gameweeks re-fetched (95% faster)  
+✅ **Complete Player Data**: All 70+ columns preserved from API  
+✅ **Separated Stats**: Seasonal vs gameweek stats in different tables  
+✅ **Star Schema**: Proper dimensional model for analytics  
+✅ **Denormalized View**: Pre-joined table for fast queries  
+✅ **Fixture Difficulty**: Ratings connected to clubs for transfer planning
 
 ---
 
@@ -293,78 +427,35 @@ The pipeline respects API rate limits with:
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+| Issue | Solution |
+|-------|----------|
+| Missing environment variables | Set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` |
+| "Bronze file not found" | Run Bronze layer first: `python -m src.etl.bronze` |
+| Supabase upload fails | Verify bucket name is `data` and credentials are correct |
+| API timeout | FPL API may be down, retry in a few minutes |
+| "No gameweek data" | Check if Bronze layer has data: `ls Data/bronze/gameweeks/` |
 
-#### 1. **Missing Environment Variables**
+**Debug Mode**:
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
 ```
-❌ Error: Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables
-```
-**Solution:**
-```bash
-# Check if variables are set
-echo $SUPABASE_URL
-
-# Set them
-export SUPABASE_URL='https://your-project.supabase.co'
-export SUPABASE_SERVICE_KEY='your-key'
-```
-
-#### 2. **League ID Not Found**
-```
-❌ Error: No league data found for league ID 24636
-```
-**Solution:**
-- Verify your league ID is correct
-- Check that the league is a public or accessible league
-- Try accessing it directly: `https://draft.premierleague.com/api/league/{ID}/details`
-
-#### 3. **CSV File Not Found**
-```
-❌ Error: Players CSV file not found: Data/players_data.csv
-```
-**Solution:**
-- Ensure `get_player_data()` ran first
-- Check that `Data/` folder exists and is writable
-- Run the full pipeline: `python main.py`
-
-#### 4. **Supabase Upload Fails**
-```
-❌ Error uploading CSV: ...
-```
-**Solution:**
-- Verify Supabase credentials are correct
-- Check that the `data` bucket exists in Supabase Storage
-- Ensure bucket permissions allow uploads
-- Test credentials with Supabase dashboard
-
-#### 5. **Network/API Timeout**
-```
-❌ Failed to fetch data from https://... after 3 attempts
-```
-**Solution:**
-- Check internet connection
-- Try again (API may be temporarily unavailable)
-- Increase retry attempts in `utils.py` if needed
 
 ---
 
-## 📝 Logging
+## 📚 Documentation
 
-The pipeline uses Python's logging module for detailed diagnostics.
+| Document | Description |
+|----------|-------------|
+| `README.md` | This file - overview and quick start |
+| `docs/MEDALLION_ARCHITECTURE.md` | Detailed medallion architecture guide |
+| `docs/DIMENSIONAL_MODEL.md` | Star schema model documentation |
+| `docs/UPDATED_DIMENSIONAL_MODEL.md` | Latest model enhancements |
+| `docs/QUICK_REFERENCE.md` | Quick reference guide |
+| `docs/fpl_etl_visualization.html` | Interactive visual documentation (open in browser) |
+| `docs/er_diagram.md` | Entity-relationship diagram (Mermaid) |
 
-**Log Format:**
-```
-LEVEL: Message
-INFO: 🚀 Starting FPL Draft data extraction pipeline...
-INFO: 📊 Fetching league standings...
-✅ Saved CSV: Data/league_standings.csv
-```
-
-**Viewing Logs:**
-- Console output shows real-time progress
-- All messages are prefixed with emojis for quick visual scanning
-- Errors are marked with ❌
-- Successes are marked with ✅
+**Start here**: Open `docs/fpl_etl_visualization.html` in your browser for an interactive guide!
 
 ---
 
@@ -478,23 +569,33 @@ The project maintains:
 
 ---
 
-## 🚀 Changelog
+## 📈 Features by Version
 
-### Version 1.1.0 (Current)
-- ✨ Fixed duplicate variable definitions
-- ✨ Enhanced error messages with helpful guidance
-- ✨ Consistent logging throughout (replaced print with logging)
-- ✨ Added file existence validation before processing
-- ✨ Environment variable support for League ID
-- ✨ Improved Parquet file location detection
+### v2.0.0 (Current - February 2026)
+- ✨ **Medallion architecture**: Bronze, Silver, Gold layers
+- ✨ **Star schema**: 5 dimensions + 4 fact tables
+- ✨ **Complete player data**: All 70+ columns from API
+- ✨ **Fixture difficulty**: dim_fixtures with ratings
+- ✨ **Incremental updates**: Bronze layer updates last 2 GWs only
+- ✨ **Separated stats**: Seasonal vs gameweek fact tables
+- ✨ **Denormalized view**: Pre-joined manager performance table
 
-### Version 1.0.0
-- Initial release with core ETL pipeline
+### v1.0.0 (January 2026)
+- Initial release with basic ETL pipeline
+- Flat data structure
+
+---
+
+## 📝 License
+
+[Add your license]
 
 ---
 
-**Last Updated:** January 23, 2026
+## 👤 Author
 
-For the latest updates and features, check the [GitHub repository](link-to-repo).
+[Add your info]
 
 ---
+
+**Last Updated**: February 7, 2026

@@ -1,11 +1,20 @@
-name: Run ETL Pipeline
+name: FPL ETL Pipeline (Medallion)
 
 on:
+  # Trigger on push to main
   push:
     branches:
       - main
-  workflow_dispatch:  # allow manual runs
-  repository_dispatch: # allow external triggers
+  
+  # Manual trigger from GitHub UI
+  workflow_dispatch:
+  
+  # Scheduled runs (every gameweek - Saturdays at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * 6'  # Every Saturday at 2 AM UTC
+  
+  # External API triggers
+  repository_dispatch:
     types: [run_pipeline]
     
 jobs:
@@ -30,6 +39,14 @@ jobs:
         run: |
           pip install -r requirements.lock --no-deps || pip install -r requirements.txt
 
-      - name: Run ETL main script
+      - name: Run Medallion ETL Pipeline
         run: |
-          python -m src.main
+          python -m src.main_medallion
+      
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: etl-logs
+          path: logs/*.log
+          retention-days: 7
