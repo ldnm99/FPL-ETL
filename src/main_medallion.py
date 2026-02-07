@@ -34,12 +34,17 @@ def run_bronze_layer():
     logging.info("🧍 Fetching player data...")
     bronze.extract_players_raw()
     
+    # Extract fixtures data
+    logging.info("📅 Fetching fixtures data...")
+    bronze.extract_fixtures_raw()
+    
     # Get current gameweek
     current_gw = bronze.get_current_gameweek()
     logging.info(f"📅 Current gameweek: {current_gw}")
     
-    # Extract all gameweeks up to current
-    logging.info(f"📈 Extracting gameweek data (GW1 to GW{current_gw})...")
+    # Only process last 2 gameweeks for efficiency
+    start_gw = max(1, current_gw - 1)
+    logging.info(f"📈 Extracting recent gameweek data (GW{start_gw} to GW{current_gw})...")
     
     # Load league data to get manager IDs
     import json
@@ -47,7 +52,7 @@ def run_bronze_layer():
         league_data = json.load(f)
     manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
     
-    for gw in range(1, current_gw + 1):
+    for gw in range(start_gw, current_gw + 1):
         logging.info(f"  Processing GW{gw}...")
         bronze.extract_gameweek_raw(gw)
         bronze.extract_all_manager_picks_raw(manager_ids, gw)
@@ -69,6 +74,10 @@ def run_silver_layer():
     logging.info("🔄 Transforming player data...")
     silver.transform_players_data()
     
+    # Transform fixtures data
+    logging.info("🔄 Transforming fixtures data...")
+    silver.transform_fixtures()
+    
     # Get current gameweek
     current_gw = bronze.get_current_gameweek()
     
@@ -78,9 +87,10 @@ def run_silver_layer():
         league_data = json.load(f)
     manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
     
-    # Transform gameweek data
-    logging.info(f"🔄 Transforming gameweek data (GW1 to GW{current_gw})...")
-    for gw in range(1, current_gw + 1):
+    # Only transform last 2 gameweeks
+    start_gw = max(1, current_gw - 1)
+    logging.info(f"🔄 Transforming recent gameweek data (GW{start_gw} to GW{current_gw})...")
+    for gw in range(start_gw, current_gw + 1):
         logging.info(f"  Transforming GW{gw}...")
         silver.transform_gameweek_data(gw, manager_ids)
     
