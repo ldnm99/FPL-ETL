@@ -125,103 +125,48 @@ def create_dim_players() -> pd.DataFrame:
 
 def create_dim_fixtures() -> pd.DataFrame:
     """
-    Create fixtures dimension table with difficulty ratings.
-    Connected to clubs via home_club_id and away_club_id.
+    Create fixtures dimension table.
+    Loads from Silver layer fixtures.parquet.
     
     Returns:
         DataFrame with fixtures dimension
     """
     logging.info("🔄 Creating dim_fixtures...")
     
-    # Load raw player data to get fixtures
-    raw_data = load_bronze_json(config.BRONZE_PLAYERS_RAW)
+    import os
     
-    if not raw_data or 'fixtures' not in raw_data:
-        logging.error("❌ No fixtures data found in bootstrap-static")
-        # Try to fetch from fixtures endpoint
-        from src.utils import fetch_data
-        from src.config import config as cfg
-        
-        fixtures_url = f"{cfg.BASE_URL}/fixtures"
-        logging.info(f"📥 Fetching fixtures from {fixtures_url}")
-        fixtures_data = fetch_data(fixtures_url)
-        
-        if not fixtures_data:
-            logging.error("❌ Could not fetch fixtures data")
-            return pd.DataFrame()
-        
-        fixtures = fixtures_data
-    else:
-        fixtures = raw_data['fixtures']
+    # Load fixtures from Silver layer
+    silver_fixtures_path = os.path.join(config.SILVER_DIR, "fixtures.parquet")
     
-    # Create dimension table - only extract scalar fields
-    # (some fixtures have nested data like 'stats' which can vary in length)
-    fixture_records = []
-    for fixture in fixtures:
-        if isinstance(fixture, dict):
-            # Extract only simple scalar values
-            record = {}
-            for key, value in fixture.items():
-                # Skip nested structures (lists, dicts)
-                if not isinstance(value, (list, dict)):
-                    record[key] = value
-            fixture_records.append(record)
+    if not os.path.exists(silver_fixtures_path):
+        logging.error(f"❌ No fixtures data found in Silver layer: {silver_fixtures_path}")
+        empty_df = pd.DataFrame(columns=['fixture_id'])
+        output_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_fixtures.parquet')
+        empty_df.to_parquet(output_path, index=False, engine='pyarrow')
+        return empty_df
     
-    dim_fixtures = pd.DataFrame(fixture_records)
+    df = pd.read_parquet(silver_fixtures_path)
     
-    # Load clubs for mapping
-    dim_clubs = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_clubs.parquet')
-    club_map = dict(zip(dim_clubs['club_id'], dim_clubs['club_name']))
+    if df.empty:
+        logging.warning("⚠️ Fixtures data is empty")
+        empty_df = pd.DataFrame(columns=['fixture_id'])
+        output_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_fixtures.parquet')
+        empty_df.to_parquet(output_path, index=False, engine='pyarrow')
+        return empty_df
     
-    # Select and rename relevant columns
-    if 'id' in dim_fixtures.columns:
-        dim_fixtures = dim_fixtures.rename(columns={'id': 'fixture_id'})
-    
-    # Map team IDs to club IDs
-    if 'team_h' in dim_fixtures.columns:
-        dim_fixtures = dim_fixtures.rename(columns={
-            'team_h': 'home_club_id',
-            'team_a': 'away_club_id'
-        })
-    
-    # Keep difficulty ratings if available
-    rename_cols = {
-        'team_h_difficulty': 'home_difficulty',
-        'team_a_difficulty': 'away_difficulty',
-        'event': 'gameweek_id',
-        'kickoff_time': 'kickoff_time',
-        'team_h_score': 'home_score',
-        'team_a_score': 'away_score',
-        'finished': 'is_finished',
-        'started': 'is_started'
+    # Rename columns to match star schema naming
+    rename_map = {
+        'gameweek': 'gameweek_id',
+        'finished': 'is_finished'
     }
-    
-    # Only rename columns that exist
-    existing_renames = {k: v for k, v in rename_cols.items() if k in dim_fixtures.columns}
-    dim_fixtures = dim_fixtures.rename(columns=existing_renames)
-    
-    # Add fixture_id if not present
-    if 'fixture_id' not in dim_fixtures.columns:
-        dim_fixtures['fixture_id'] = range(1, len(dim_fixtures) + 1)
-    
-    # Select final columns
-    final_cols = [
-        'fixture_id', 'gameweek_id', 'home_club_id', 'away_club_id',
-        'home_difficulty', 'away_difficulty', 'kickoff_time',
-        'home_score', 'away_score', 'is_finished', 'is_started'
-    ]
-    
-    # Filter to existing columns
-    existing_final_cols = [col for col in final_cols if col in dim_fixtures.columns]
-    if existing_final_cols:
-        dim_fixtures = dim_fixtures[existing_final_cols].copy()
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
     
     # Save to Gold dimensions
-    output_path = config.GOLD_DIR + '/dimensions/dim_fixtures.parquet'
-    dim_fixtures.to_parquet(output_path, index=False, engine='pyarrow')
+    output_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_fixtures.parquet')
+    df.to_parquet(output_path, index=False, engine='pyarrow')
     
-    logging.info(f"✅ dim_fixtures created: {len(dim_fixtures)} fixtures")
-    return dim_fixtures
+    logging.info(f"✅ dim_fixtures created: {len(df)} fixtures")
+    return df
 
 
 def create_dim_gameweeks() -> pd.DataFrame:
