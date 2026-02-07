@@ -10,17 +10,21 @@ from src.config import config
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def create_fact_player_performance() -> pd.DataFrame:
+def create_fact_player_performance(incremental=True, recent_gws=2) -> pd.DataFrame:
     """
     Create player performance fact table.
     Grain: One row per player per gameweek.
+    
+    Args:
+        incremental: If True, load existing data and only update recent gameweeks
+        recent_gws: Number of recent gameweeks to update (default: 2)
     
     Returns:
         DataFrame with player performance facts
     """
     logging.info("🔄 Creating fact_player_performance...")
     
-    # Load all Silver gameweek parquet files
+    # Determine which gameweeks to process
     gw_files = sorted([
         f for f in os.listdir(config.SILVER_GAMEWEEKS_DIR)
         if f.endswith('.parquet')
@@ -30,12 +34,32 @@ def create_fact_player_performance() -> pd.DataFrame:
         logging.warning("⚠️ No gameweek files found")
         return pd.DataFrame()
     
-    # Load and concatenate
+    # Load existing Gold data if incremental mode
+    existing_df = None
+    output_path = config.GOLD_DIR + '/facts/fact_player_performance.parquet'
+    
+    if incremental and os.path.exists(output_path):
+        existing_df = pd.read_parquet(output_path)
+        # Get max gameweek to determine which ones to update
+        if not existing_df.empty and 'gameweek_id' in existing_df.columns:
+            max_gw = existing_df['gameweek_id'].max()
+            start_gw = max(1, max_gw - recent_gws + 1)
+            logging.info(f"📊 Incremental update: processing GW{start_gw} onwards (updating last {recent_gws} GWs)")
+            # Filter files to only recent gameweeks
+            gw_files = [f for f in gw_files if int(f.split('_')[1].split('.')[0]) >= start_gw]
+            # Remove old data for these gameweeks
+            existing_df = existing_df[existing_df['gameweek_id'] < start_gw]
+    
+    # Load and concatenate new data
     dfs = []
     for filename in gw_files:
         file_path = os.path.join(config.SILVER_GAMEWEEKS_DIR, filename)
         df = pd.read_parquet(file_path)
         dfs.append(df)
+    
+    if not dfs:
+        logging.info("✅ No new gameweeks to process")
+        return existing_df if existing_df is not None else pd.DataFrame()
     
     fact_performance = pd.concat(dfs, ignore_index=True)
     
@@ -100,6 +124,11 @@ def create_fact_player_performance() -> pd.DataFrame:
     # Select only fact columns
     final_cols = list(existing_fact_cols.values())
     fact_performance = fact_performance[final_cols].copy()
+    
+    # Combine with existing data if in incremental mode
+    if existing_df is not None and not existing_df.empty:
+        logging.info(f"📊 Combining {len(existing_df)} existing + {len(fact_performance)} new records")
+        fact_performance = pd.concat([existing_df, fact_performance], ignore_index=True)
     
     # Add surrogate key
     fact_performance['performance_id'] = range(1, len(fact_performance) + 1)
