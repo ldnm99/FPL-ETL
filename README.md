@@ -1,6 +1,6 @@
 # FPL-ETL: Fantasy Premier League Data Pipeline
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![Status](https://img.shields.io/badge/Status-Production-brightgreen)
 ![Architecture](https://img.shields.io/badge/Architecture-Medallion-gold)
 ![Model](https://img.shields.io/badge/Model-Star_Schema-purple)
@@ -10,53 +10,188 @@ A production-ready ETL pipeline for Fantasy Premier League (FPL) draft league da
 ## 🎯 Architecture Overview
 
 ```
-API → Bronze (Raw JSON) → Silver (Cleaned) → Gold (Star Schema) → Supabase
+FPL API → Bronze (Raw JSON) → Silver (Cleaned Parquet) → Gold (Star Schema) → Supabase
 ```
 
-**Bronze Layer**: Configurable - Full load OR incremental updates (last 2 gameweeks)  
-**Silver Layer**: Validated CSV/Parquet files with all 70+ player columns  
-**Gold Layer**: Dimensional model with 5 dimensions + 4 fact tables
+**Bronze Layer**: Raw data extraction (last 2 gameweeks)  
+**Silver Layer**: Cleaned and validated parquet files  
+**Gold Layer**: Star schema with 5 dimensions + 4 fact tables
 
 ---
 
 ## 🚀 Quick Start
 
-### First Run (Full Load - ALL Gameweeks)
+### Installation
 
 ```bash
-# 1. Install dependencies
+# 1. Clone repository
+git clone https://github.com/ldnm99/FPL-ETL.git
+cd FPL-ETL
+
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 2. Configure environment
+# 3. Configure environment
 cp .env.example .env
-# Edit .env with your credentials
-
-# 3. Verify config.py has INCREMENTAL_MODE = False (default for first run)
-# src/config.py: INCREMENTAL_MODE: bool = False
-
-# 4. Run full pipeline
-python -m src.main_medallion
-
-# 5. Upload to Supabase
-python -m src.etl.upload_database
+# Edit .env with your SUPABASE_URL and SUPABASE_SERVICE_KEY
 ```
 
-### Subsequent Runs (Incremental - Last 2 GWs Only)
+### Running the Pipeline
 
 ```bash
-# 1. Switch to incremental mode
-# Edit src/config.py: INCREMENTAL_MODE: bool = True
-
-# 2. Run pipeline (95% faster!)
+# Run complete ETL pipeline (Bronze → Silver → Gold → Upload)
 python -m src.main_medallion
-
-# 3. Upload updates
-python -m src.etl.upload_database
 ```
 
-**See [INCREMENTAL_MODE_GUIDE.md](docs/INCREMENTAL_MODE_GUIDE.md) for detailed mode switching instructions.**
+**What it does:**
+- ✅ Extracts last 2 gameweeks from FPL API (Bronze)
+- ✅ Transforms to cleaned parquet files (Silver)
+- ✅ Creates star schema dimensions and facts (Gold)
+- ✅ Uploads all layers to Supabase storage
 
 ---
+
+## 📊 Data Model
+
+### Star Schema (Gold Layer)
+
+**Dimensions:**
+- `dim_players` - Player master data
+- `dim_clubs` - Team information
+- `dim_managers` - League managers
+- `dim_gameweeks` - Gameweek metadata
+- `dim_fixtures` - Match fixtures
+
+**Facts:**
+- `fact_player_performance` - Player stats per gameweek (70+ columns)
+- `fact_manager_picks` - Manager team selections
+- `fact_player_seasonal_stats` - Season aggregations
+- `manager_gameweek_performance` - Denormalized view for dashboards
+
+### Enhanced Statistics
+
+All 70+ FPL statistics including:
+- Basic: Points, minutes, goals, assists, clean sheets
+- Advanced: xG, xA, xGi, xGc, ICT index
+- Defensive: Tackles, clearances, recoveries
+- Goalkeeping: Saves, penalties saved
+
+---
+
+## 📁 Project Structure
+
+```
+FPL-ETL/
+├── src/
+│   ├── main_medallion.py           # Pipeline orchestrator
+│   ├── config.py                   # Configuration
+│   ├── utils.py                    # Shared utilities
+│   └── etl/
+│       ├── bronze.py               # Raw data extraction
+│       ├── silver.py               # Data transformation
+│       ├── gold.py                 # Gold layer coordinator
+│       ├── gold_dimensions.py      # Dimension tables
+│       ├── gold_facts.py           # Fact tables
+│       ├── gold_seasonal_stats.py  # Aggregations
+│       └── upload_database.py      # Supabase upload
+├── Data/
+│   ├── bronze/                     # Raw JSON files
+│   ├── silver/                     # Cleaned parquet files
+│   └── gold/                       # Star schema parquet files
+│       ├── dimensions/
+│       └── facts/
+├── docs/                           # Documentation
+├── .github/workflows/etl.yml       # GitHub Actions
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 🔄 Automated Runs
+
+The pipeline runs automatically via GitHub Actions:
+- **Weekly**: Every Saturday at 2 AM UTC (after gameweek)
+- **Manual**: Trigger from GitHub Actions UI
+- **API**: Repository dispatch event
+
+See [`.github/workflows/etl.yml`](.github/workflows/etl.yml) for configuration.
+
+---
+
+## 📚 Documentation
+
+- [**MEDALLION_ARCHITECTURE.md**](docs/MEDALLION_ARCHITECTURE.md) - Detailed architecture explanation
+- [**DIMENSIONAL_MODEL.md**](docs/DIMENSIONAL_MODEL.md) - Star schema design
+- [**UPDATED_DIMENSIONAL_MODEL.md**](docs/UPDATED_DIMENSIONAL_MODEL.md) - Latest enhancements
+- [**ENHANCED_GAMEWEEK_STATS.md**](docs/ENHANCED_GAMEWEEK_STATS.md) - All 70+ statistics
+- [**GITHUB_ACTIONS_GUIDE.md**](docs/GITHUB_ACTIONS_GUIDE.md) - CI/CD setup
+- [**QUICK_REFERENCE.md**](docs/QUICK_REFERENCE.md) - Command reference
+
+---
+
+## 🛠️ Configuration
+
+Edit `src/config.py` to customize:
+
+```python
+LEAGUE_ID = "24636"  # Your FPL Draft league ID
+BASE_URL = "https://draft.premierleague.com/api"
+```
+
+Environment variables (`.env`):
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key
+```
+
+---
+
+## 🔍 Key Features
+
+✅ **Incremental Updates** - Only processes last 2 gameweeks (95% faster)  
+✅ **Star Schema** - Optimized for analytics queries  
+✅ **Complete Statistics** - All 70+ FPL data points  
+✅ **Automated Runs** - GitHub Actions weekly schedule  
+✅ **Cloud Storage** - Supabase object storage  
+✅ **Type Safe** - Full type hints throughout  
+✅ **Logging** - Comprehensive pipeline logging  
+
+---
+
+## 📈 Performance
+
+- **Full load (25 GWs)**: ~2 minutes
+- **Incremental (2 GWs)**: ~15 seconds
+- **Data volume**: ~280KB total (compressed parquet)
+- **Gameweek stats**: 70+ columns per player
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+---
+
+## 📝 License
+
+MIT License - See LICENSE file for details
+
+---
+
+## 🔗 Related Projects
+
+- **Frontend Dashboard**: [fpl_draft_frontend](https://github.com/ldnm99/fpl_draft_frontend)
+- Uses this ETL pipeline's Gold layer for visualizations
+
+---
+
+**Built with ❤️ for FPL Draft League Analytics**
 
 ## 📁 Project Structure
 
