@@ -104,13 +104,19 @@ def upload_parquet(file_path: str, supabase_path: str, bucket: str = "data") -> 
 # --------------------------
 # Layer-specific upload functions
 # --------------------------
-def upload_bronze_layer():
-    """Upload Bronze layer (raw JSON files) to Supabase."""
+def upload_bronze_layer(recent_gws_only: bool = True, num_gws: int = 2):
+    """
+    Upload Bronze layer (raw JSON files) to Supabase.
+    
+    Args:
+        recent_gws_only: If True, only upload last N gameweeks
+        num_gws: Number of recent gameweeks to upload (default: 2)
+    """
     logging.info("🥉 Uploading Bronze layer...")
     
     bucket = config.SUPABASE_BUCKET
     
-    # Upload league raw data
+    # Always upload these core files
     if os.path.exists(config.BRONZE_LEAGUE_RAW):
         upload_json(
             config.BRONZE_LEAGUE_RAW,
@@ -118,7 +124,6 @@ def upload_bronze_layer():
             bucket
         )
     
-    # Upload players raw data
     if os.path.exists(config.BRONZE_PLAYERS_RAW):
         upload_json(
             config.BRONZE_PLAYERS_RAW,
@@ -126,38 +131,85 @@ def upload_bronze_layer():
             bucket
         )
     
-    # Upload gameweek raw data
+    fixtures_raw = os.path.join(config.BRONZE_DIR, 'fixtures_raw.json')
+    if os.path.exists(fixtures_raw):
+        upload_json(
+            fixtures_raw,
+            config.get_supabase_path('bronze', 'fixtures_raw.json'),
+            bucket
+        )
+    
+    # Determine which gameweeks to upload
+    if recent_gws_only:
+        from src.etl.bronze import get_current_gameweek
+        current_gw = get_current_gameweek()
+        start_gw = max(1, current_gw - num_gws + 1)
+        logging.info(f"📅 Uploading gameweeks {start_gw} to {current_gw} (last {num_gws} GWs)")
+    else:
+        start_gw = 1
+        current_gw = 38
+        logging.info("📅 Uploading ALL gameweeks (full sync)")
+    
+    # Upload gameweek raw data (only recent GWs)
     if os.path.exists(config.BRONZE_GAMEWEEKS_DIR):
+        uploaded_count = 0
         for filename in os.listdir(config.BRONZE_GAMEWEEKS_DIR):
             if filename.endswith('.json'):
-                file_path = os.path.join(config.BRONZE_GAMEWEEKS_DIR, filename)
-                upload_json(
-                    file_path,
-                    config.get_supabase_path('bronze', f'gameweeks/{filename}'),
-                    bucket
-                )
+                # Extract GW number from filename: gw_25_raw.json -> 25
+                try:
+                    gw_num = int(filename.split('_')[1])
+                    if gw_num >= start_gw and gw_num <= current_gw:
+                        file_path = os.path.join(config.BRONZE_GAMEWEEKS_DIR, filename)
+                        upload_json(
+                            file_path,
+                            config.get_supabase_path('bronze', f'gameweeks/{filename}'),
+                            bucket
+                        )
+                        uploaded_count += 1
+                except (IndexError, ValueError):
+                    # Skip files that don't match expected pattern
+                    continue
+        logging.info(f"📤 Uploaded {uploaded_count} gameweek files")
     
-    # Upload manager picks raw data
+    # Upload manager picks raw data (only recent GWs)
     if os.path.exists(config.BRONZE_PICKS_DIR):
+        uploaded_count = 0
         for filename in os.listdir(config.BRONZE_PICKS_DIR):
             if filename.endswith('.json'):
-                file_path = os.path.join(config.BRONZE_PICKS_DIR, filename)
-                upload_json(
-                    file_path,
-                    config.get_supabase_path('bronze', f'manager_picks/{filename}'),
-                    bucket
-                )
+                # Extract GW number from filename
+                try:
+                    # Filename format: manager_XXXXX_gw_25.json
+                    parts = filename.split('_gw_')
+                    if len(parts) == 2:
+                        gw_num = int(parts[1].replace('.json', ''))
+                        if gw_num >= start_gw and gw_num <= current_gw:
+                            file_path = os.path.join(config.BRONZE_PICKS_DIR, filename)
+                            upload_json(
+                                file_path,
+                                config.get_supabase_path('bronze', f'manager_picks/{filename}'),
+                                bucket
+                            )
+                            uploaded_count += 1
+                except (IndexError, ValueError):
+                    continue
+        logging.info(f"📤 Uploaded {uploaded_count} manager pick files")
     
     logging.info("✅ Bronze layer upload complete")
 
 
-def upload_silver_layer():
-    """Upload Silver layer (cleaned CSV/Parquet files) to Supabase."""
+def upload_silver_layer(recent_gws_only: bool = True, num_gws: int = 2):
+    """
+    Upload Silver layer (cleaned CSV/Parquet files) to Supabase.
+    
+    Args:
+        recent_gws_only: If True, only upload last N gameweeks
+        num_gws: Number of recent gameweeks to upload (default: 2)
+    """
     logging.info("🥈 Uploading Silver layer...")
     
     bucket = config.SUPABASE_BUCKET
     
-    # Upload league standings CSV
+    # Always upload these core files
     if os.path.exists(config.SILVER_LEAGUE_CSV):
         upload_csv(
             config.SILVER_LEAGUE_CSV,
@@ -165,7 +217,6 @@ def upload_silver_layer():
             bucket
         )
     
-    # Upload players data CSV
     if os.path.exists(config.SILVER_PLAYERS_CSV):
         upload_csv(
             config.SILVER_PLAYERS_CSV,
@@ -173,22 +224,54 @@ def upload_silver_layer():
             bucket
         )
     
-    # Upload gameweek parquet files
+    fixtures_parquet = os.path.join(config.SILVER_DIR, 'fixtures.parquet')
+    if os.path.exists(fixtures_parquet):
+        upload_parquet(
+            fixtures_parquet,
+            config.get_supabase_path('silver', 'fixtures.parquet'),
+            bucket
+        )
+    
+    # Determine which gameweeks to upload
+    if recent_gws_only:
+        from src.etl.bronze import get_current_gameweek
+        current_gw = get_current_gameweek()
+        start_gw = max(1, current_gw - num_gws + 1)
+        logging.info(f"📅 Uploading gameweeks {start_gw} to {current_gw} (last {num_gws} GWs)")
+    else:
+        start_gw = 1
+        current_gw = 38
+        logging.info("📅 Uploading ALL gameweeks (full sync)")
+    
+    # Upload gameweek parquet files (only recent GWs)
     if os.path.exists(config.SILVER_GAMEWEEKS_DIR):
+        uploaded_count = 0
         for filename in os.listdir(config.SILVER_GAMEWEEKS_DIR):
             if filename.endswith('.parquet'):
-                file_path = os.path.join(config.SILVER_GAMEWEEKS_DIR, filename)
-                upload_parquet(
-                    file_path,
-                    config.get_supabase_path('silver', f'gameweeks_parquet/{filename}'),
-                    bucket
-                )
+                # Extract GW number from filename: gw_data_gw25.parquet -> 25
+                try:
+                    gw_num = int(filename.replace('gw_data_gw', '').replace('.parquet', ''))
+                    if gw_num >= start_gw and gw_num <= current_gw:
+                        file_path = os.path.join(config.SILVER_GAMEWEEKS_DIR, filename)
+                        upload_parquet(
+                            file_path,
+                            config.get_supabase_path('silver', f'gameweeks_parquet/{filename}'),
+                            bucket
+                        )
+                        uploaded_count += 1
+                except ValueError:
+                    continue
+        logging.info(f"📤 Uploaded {uploaded_count} gameweek parquet files")
     
     logging.info("✅ Silver layer upload complete")
 
 
 def upload_gold_layer():
-    """Upload Gold layer (aggregated Parquet files) to Supabase."""
+    """
+    Upload Gold layer (aggregated Parquet files) to Supabase.
+    Gold layer files always contain complete historical data with incremental updates,
+    so we always upload all Gold files.
+    """
     logging.info("🥇 Uploading Gold layer...")
     
     bucket = config.SUPABASE_BUCKET
@@ -217,9 +300,10 @@ def upload_gold_layer():
             bucket
         )
     
-    # Upload dimension tables
+    # Upload all dimension tables
     dimensions_dir = os.path.join(config.GOLD_DIR, 'dimensions')
     if os.path.exists(dimensions_dir):
+        uploaded_count = 0
         for filename in os.listdir(dimensions_dir):
             if filename.endswith('.parquet'):
                 file_path = os.path.join(dimensions_dir, filename)
@@ -228,10 +312,13 @@ def upload_gold_layer():
                     config.get_supabase_path('gold', f'dimensions/{filename}'),
                     bucket
                 )
+                uploaded_count += 1
+        logging.info(f"📤 Uploaded {uploaded_count} dimension tables")
     
-    # Upload fact tables
+    # Upload all fact tables
     facts_dir = os.path.join(config.GOLD_DIR, 'facts')
     if os.path.exists(facts_dir):
+        uploaded_count = 0
         for filename in os.listdir(facts_dir):
             if filename.endswith('.parquet'):
                 file_path = os.path.join(facts_dir, filename)
@@ -240,6 +327,8 @@ def upload_gold_layer():
                     config.get_supabase_path('gold', f'facts/{filename}'),
                     bucket
                 )
+                uploaded_count += 1
+        logging.info(f"📤 Uploaded {uploaded_count} fact tables")
     
     logging.info("✅ Gold layer upload complete")
 
@@ -269,14 +358,26 @@ def update_timestamp(layer: str = "all"):
 # --------------------------
 # Main function for external calls
 # --------------------------
-def main():
-    """Upload all medallion layers to Supabase."""
-    logging.info("⬆️ Starting medallion layer uploads...")
+def main(recent_gws_only: bool = True, num_gws: int = 2):
+    """
+    Upload all medallion layers to Supabase.
+    
+    Args:
+        recent_gws_only: If True, only upload last N gameweeks for Bronze/Silver (default: True)
+        num_gws: Number of recent gameweeks to upload (default: 2)
+    """
+    logging.info("⬆️  Starting medallion layer uploads...")
+    
+    if recent_gws_only:
+        logging.info(f"📅 Bronze/Silver: Only uploading last {num_gws} gameweeks")
+        logging.info(f"📅 Gold: Uploading ALL files (contains complete historical data)")
+    else:
+        logging.info("📅 Uploading ALL files (full sync)")
     
     # Upload each layer
-    upload_bronze_layer()
-    upload_silver_layer()
-    upload_gold_layer()
+    upload_bronze_layer(recent_gws_only=recent_gws_only, num_gws=num_gws)
+    upload_silver_layer(recent_gws_only=recent_gws_only, num_gws=num_gws)
+    upload_gold_layer()  # Always upload all Gold files
     
     # Update timestamp
     update_timestamp(layer="all")
