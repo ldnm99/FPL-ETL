@@ -65,6 +65,41 @@ def extract_players_raw() -> Dict[Any, Any]:
     return data
 
 
+def extract_fixtures_raw() -> List[Dict[Any, Any]]:
+    """
+    Extract raw fixtures data from bootstrap-static endpoint.
+    The Draft API includes fixtures in the bootstrap-static response.
+    
+    Returns:
+        List of fixture dicts
+    """
+    import os
+    import json
+    logging.info("🏟️ Extracting fixtures from bootstrap-static...")
+    
+    # Load player data (which contains fixtures)
+    if not os.path.exists(config.BRONZE_PLAYERS_RAW):
+        logging.error(f"❌ Bootstrap-static not found: {config.BRONZE_PLAYERS_RAW}")
+        logging.info("Run extract_players_raw() first")
+        return []
+    
+    with open(config.BRONZE_PLAYERS_RAW, 'r', encoding='utf-8') as f:
+        raw_data = json.load(f)
+    
+    if not raw_data or 'fixtures' not in raw_data:
+        logging.error("❌ No fixtures data found in bootstrap-static")
+        return []
+    
+    fixtures = raw_data['fixtures']
+    
+    # Save raw JSON to Bronze layer
+    fixtures_path = os.path.join(config.BRONZE_DIR, "fixtures_raw.json")
+    save_raw_json(fixtures, fixtures_path)
+    logging.info(f"✅ Bronze: Fixtures raw data saved ({len(fixtures)} fixtures)")
+    
+    return fixtures
+
+
 def extract_gameweek_raw(gameweek: int) -> Dict[Any, Any]:
     """
     Extract raw gameweek live data from FPL API.
@@ -235,6 +270,9 @@ def main():
     
     # Extract player data (always update - it's the master list)
     extract_players_raw()
+    
+    # Extract fixtures data (always update - needed for analysis)
+    extract_fixtures_raw()
     
     # Check mode: full load vs incremental
     if config.INCREMENTAL_MODE:

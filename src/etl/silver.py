@@ -296,6 +296,78 @@ def merge_all_gameweeks() -> pd.DataFrame:
     return merged_df
 
 
+def transform_fixtures() -> pd.DataFrame:
+    """
+    Transform raw fixtures data into cleaned parquet.
+    
+    Returns:
+        DataFrame with fixtures data
+    """
+    import os
+    logging.info("🔄 Transforming fixtures (Bronze → Silver)")
+    
+    # Load raw fixtures from Bronze
+    fixtures_path = os.path.join(config.BRONZE_DIR, "fixtures_raw.json")
+    raw_data = load_bronze_json(fixtures_path)
+    
+    if not raw_data:
+        logging.error("❌ No fixtures data found")
+        return pd.DataFrame()
+    
+    # Fixtures are grouped by gameweek number as dict keys
+    # Flatten the structure
+    all_fixtures = []
+    for gw_num, fixtures_list in raw_data.items():
+        if isinstance(fixtures_list, list):
+            all_fixtures.extend(fixtures_list)
+    
+    if not all_fixtures:
+        logging.warning("⚠️ No fixtures found after flattening")
+        return pd.DataFrame()
+    
+    # Transform to DataFrame
+    df = pd.DataFrame(all_fixtures)
+    
+    # Select relevant columns (only scalar fields)
+    columns_to_keep = [
+        'id',
+        'code', 
+        'event',  # gameweek
+        'finished',
+        'kickoff_time',
+        'team_h',  # home team id
+        'team_a',  # away team id
+        'team_h_score',
+        'team_a_score',
+    ]
+    
+    # Only keep columns that exist in the data
+    available_cols = [col for col in columns_to_keep if col in df.columns]
+    df_clean = df[available_cols].copy()
+    
+    # Rename for clarity
+    rename_map = {
+        'id': 'fixture_id',
+        'event': 'gameweek',
+        'team_h': 'home_team_id',
+        'team_a': 'away_team_id',
+        'team_h_score': 'home_score',
+        'team_a_score': 'away_score',
+    }
+    df_clean = df_clean.rename(columns=rename_map)
+    
+    # Convert kickoff_time to datetime
+    if 'kickoff_time' in df_clean.columns:
+        df_clean['kickoff_time'] = pd.to_datetime(df_clean['kickoff_time'], errors='coerce')
+    
+    # Save to Silver layer
+    output_path = os.path.join(config.SILVER_DIR, "fixtures.parquet")
+    df_clean.to_parquet(output_path, index=False, engine='pyarrow')
+    logging.info(f"✅ Silver: Fixtures saved to {output_path} ({len(df_clean)} fixtures)")
+    
+    return df_clean
+
+
 def main():
     """Run Silver layer transformations."""
     logging.info("🥈 Starting Silver Layer transformations...")
@@ -305,6 +377,9 @@ def main():
     
     # Transform player data
     transform_players_data()
+    
+    # Transform fixtures
+    transform_fixtures()
     
     logging.info("🎉 Silver Layer transformations complete!")
 
