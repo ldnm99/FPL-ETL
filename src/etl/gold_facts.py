@@ -10,13 +10,14 @@ from src.config import config
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def create_fact_player_performance(incremental=True, recent_gws=2) -> pd.DataFrame:
+def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFrame:
     """
     Create player performance fact table.
     Grain: One row per player per gameweek.
     
     Args:
         incremental: If True, load existing data and only update recent gameweeks
+                    Set to False for GitHub Actions (fresh environment)
         recent_gws: Number of recent gameweeks to update (default: 2)
     
     Returns:
@@ -50,6 +51,8 @@ def create_fact_player_performance(incremental=True, recent_gws=2) -> pd.DataFra
             gw_files = [f for f in gw_files if int(f.replace('gw_data_gw', '').replace('.parquet', '')) >= start_gw]
             # Remove old data for these gameweeks
             existing_df = existing_df[existing_df['gameweek_id'] < start_gw]
+    else:
+        logging.info("📊 Full rebuild: processing all gameweeks")
     
     # Load and concatenate new data
     dfs = []
