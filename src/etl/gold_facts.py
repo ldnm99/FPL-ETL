@@ -46,7 +46,8 @@ def create_fact_player_performance(incremental=True, recent_gws=2) -> pd.DataFra
             start_gw = max(1, max_gw - recent_gws + 1)
             logging.info(f"📊 Incremental update: processing GW{start_gw} onwards (updating last {recent_gws} GWs)")
             # Filter files to only recent gameweeks
-            gw_files = [f for f in gw_files if int(f.split('_')[1].split('.')[0]) >= start_gw]
+            # Format: gw_data_gw25.parquet
+            gw_files = [f for f in gw_files if int(f.replace('gw_data_gw', '').replace('.parquet', '')) >= start_gw]
             # Remove old data for these gameweeks
             existing_df = existing_df[existing_df['gameweek_id'] < start_gw]
     
