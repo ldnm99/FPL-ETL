@@ -20,6 +20,52 @@ from src.etl import bronze, silver, gold, upload_database
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
+def download_silver_gameweeks_from_supabase():
+    """
+    Download all existing Silver gameweek parquet files from Supabase.
+    This ensures we have complete historical data when running in incremental mode.
+    """
+    try:
+        from supabase import create_client
+        import io
+        
+        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+        bucket = config.SUPABASE_BUCKET
+        
+        # List all files in silver/gameweeks_parquet/ prefix
+        result = supabase.storage.from_(bucket).list('silver/gameweeks_parquet')
+        
+        if not result:
+            logging.warning("⚠️ No existing Silver gameweeks found in Supabase")
+            return
+        
+        downloaded = 0
+        for file_obj in result:
+            filename = file_obj['name']
+            if filename.endswith('.parquet'):
+                remote_path = f"silver/gameweeks_parquet/{filename}"
+                local_path = os.path.join(config.SILVER_GAMEWEEKS_DIR, filename)
+                
+                # Skip if we just created this file locally
+                if os.path.exists(local_path):
+                    continue
+                
+                # Download from Supabase
+                data = supabase.storage.from_(bucket).download(remote_path)
+                
+                # Save locally
+                with open(local_path, 'wb') as f:
+                    f.write(data)
+                
+                downloaded += 1
+        
+        logging.info(f"✅ Downloaded {downloaded} existing gameweek files from Supabase")
+        
+    except Exception as e:
+        logging.warning(f"⚠️ Could not download existing Silver gameweeks: {e}")
+        logging.warning("   Continuing with local data only...")
+
+
 def run_bronze_layer():
     """Execute Bronze layer extraction (raw data from API)."""
     logging.info("=" * 60)
@@ -91,6 +137,13 @@ def run_gold_layer():
     logging.info("=" * 60)
     logging.info("🥇 GOLD LAYER: Creating analytics-ready datasets")
     logging.info("=" * 60)
+    
+    # In incremental mode on fresh environments (like GitHub Actions),
+    # we need ALL historical gameweeks to create complete Gold aggregations.
+    # Download existing Silver gameweeks from Supabase if needed.
+    if config.INCREMENTAL_MODE:
+        logging.info("⬇️  Downloading existing Silver gameweeks from Supabase for complete Gold dataset...")
+        download_silver_gameweeks_from_supabase()
     
     # Create full gameweek dataset
     logging.info("📊 Creating full gameweek dataset...")
