@@ -334,7 +334,9 @@ def main():
     os.makedirs(config.GOLD_DIR + '/facts', exist_ok=True)
     
     # Create fact tables
-    create_fact_player_performance()  # Gameweek-level stats
+    # IMPORTANT: Pass incremental=False to force full rebuild from downloaded Silver files
+    # In GitHub Actions, we download all Silver gameweeks first, so rebuilding ensures all data is included
+    create_fact_player_performance(incremental=False)  # Gameweek-level stats (full rebuild)
     create_fact_manager_picks()
     
     # Create player seasonal stats (new)
