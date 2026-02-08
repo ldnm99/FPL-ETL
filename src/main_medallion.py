@@ -153,8 +153,8 @@ def run_gold_layer():
     # Create dimensional model (dimensions + facts)
     logging.info("📊 Creating dimensional model (star schema)...")
     from src.etl import gold_dimensions, gold_facts
-    gold_dimensions.create_all_dimensions()
-    gold_facts.create_all_facts()
+    gold_dimensions.main()
+    gold_facts.main()
     
     logging.info("✅ Gold layer aggregation complete!\n")
 
