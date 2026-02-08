@@ -18,7 +18,7 @@ class Config:
     DATA_DIR: str = "Data"
     
     # Pipeline mode
-    INCREMENTAL_MODE: bool = False  # Set to False for initial full load, True for incremental updates
+    INCREMENTAL_MODE: bool = True  # Set to False for initial full load, True for incremental updates
     INCREMENTAL_GAMEWEEKS: int = 2  # Number of recent gameweeks to update in incremental mode
     
     # Medallion Layer Directories

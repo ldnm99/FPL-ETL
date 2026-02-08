@@ -36,9 +36,16 @@ def fetch_data(url: str, retries: int = 3, delay: int = 2, timeout: int = 10) ->
     Returns:
         dict | None: JSON response if successful, else None.
     """
+    # Add cache-busting headers to ensure fresh data
+    headers = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
+    
     for attempt in range(1, retries + 1):
         try:
-            response = session.get(url, timeout=timeout)
+            response = session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
