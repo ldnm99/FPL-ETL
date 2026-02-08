@@ -138,13 +138,6 @@ def run_gold_layer():
     logging.info("🥇 GOLD LAYER: Creating analytics-ready datasets")
     logging.info("=" * 60)
     
-    # In incremental mode on fresh environments (like GitHub Actions),
-    # we need ALL historical gameweeks to create complete Gold aggregations.
-    # Download existing Silver gameweeks from Supabase if needed.
-    if config.INCREMENTAL_MODE:
-        logging.info("⬇️  Downloading existing Silver gameweeks from Supabase for complete Gold dataset...")
-        download_silver_gameweeks_from_supabase()
-    
     # Create full gameweek dataset
     logging.info("📊 Creating full gameweek dataset...")
     gold.create_full_gameweek_dataset()
@@ -156,6 +149,12 @@ def run_gold_layer():
     # Create manager performance metrics
     logging.info("📊 Creating manager performance metrics...")
     gold.create_manager_performance()
+    
+    # Create dimensional model (dimensions + facts)
+    logging.info("📊 Creating dimensional model (star schema)...")
+    from src.etl import gold_dimensions, gold_facts
+    gold_dimensions.create_all_dimensions()
+    gold_facts.create_all_facts()
     
     logging.info("✅ Gold layer aggregation complete!\n")
 
