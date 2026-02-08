@@ -38,24 +38,8 @@ def run_bronze_layer():
     logging.info("📅 Fetching fixtures data...")
     bronze.extract_fixtures_raw()
     
-    # Get current gameweek
-    current_gw = bronze.get_current_gameweek()
-    logging.info(f"📅 Current gameweek: {current_gw}")
-    
-    # IMPORTANT: Extract ALL gameweeks for complete historical data
-    # This ensures Gold layer has complete dataset even on fresh environments (like GitHub Actions)
-    logging.info(f"📈 Extracting ALL gameweeks (GW1 to GW{current_gw}) for complete dataset...")
-    
-    # Load league data to get manager IDs
-    import json
-    with open(config.BRONZE_LEAGUE_RAW, 'r') as f:
-        league_data = json.load(f)
-    manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
-    
-    for gw in range(1, current_gw + 1):
-        logging.info(f"  Processing GW{gw}...")
-        bronze.extract_gameweek_raw(gw)
-        bronze.extract_all_manager_picks_raw(manager_ids, gw)
+    # Use bronze module's logic which respects INCREMENTAL_MODE
+    bronze.main()
     
     logging.info("✅ Bronze layer extraction complete!\n")
 
@@ -87,9 +71,15 @@ def run_silver_layer():
         league_data = json.load(f)
     manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
     
-    # Transform ALL gameweeks for complete dataset
-    logging.info(f"🔄 Transforming ALL gameweek data (GW1 to GW{current_gw})...")
-    for gw in range(1, current_gw + 1):
+    # Transform gameweeks based on mode
+    if config.INCREMENTAL_MODE:
+        start_gw = max(1, current_gw - config.INCREMENTAL_GAMEWEEKS + 1)
+        logging.info(f"🔄 Transforming gameweeks {start_gw} to {current_gw} (incremental mode)...")
+    else:
+        start_gw = 1
+        logging.info(f"🔄 Transforming ALL gameweek data (GW1 to GW{current_gw})...")
+    
+    for gw in range(start_gw, current_gw + 1):
         logging.info(f"  Transforming GW{gw}...")
         silver.transform_gameweek_data(gw, manager_ids)
     
