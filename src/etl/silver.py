@@ -8,8 +8,6 @@ import pandas as pd
 from typing import Dict, Any, List
 from src.config import config
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
 
 def load_bronze_json(file_path: str) -> Dict[Any, Any]:
     """Load JSON data from Bronze layer."""

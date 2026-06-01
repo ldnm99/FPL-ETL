@@ -6,8 +6,7 @@ import logging
 import pandas as pd
 import os
 from src.config import config
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+from src.etl import gold_seasonal_stats
 
 
 def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFrame:
@@ -37,7 +36,7 @@ def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFr
     
     # Load existing Gold data if incremental mode
     existing_df = None
-    output_path = config.GOLD_DIR + '/facts/fact_player_performance.parquet'
+    output_path = os.path.join(config.GOLD_DIR, 'facts', 'fact_player_performance.parquet')
     
     if incremental and os.path.exists(output_path):
         existing_df = pd.read_parquet(output_path)
@@ -68,7 +67,7 @@ def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFr
     fact_performance = pd.concat(dfs, ignore_index=True)
     
     # Load dim_players to get player_key and club_id
-    dim_players = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_players.parquet')
+    dim_players = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet'))
     player_mapping = dim_players[['player_id', 'player_key', 'club_id']].copy()
     
     # Merge to get player_key and club_id
@@ -142,7 +141,7 @@ def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFr
     fact_performance = fact_performance[cols]
     
     # Save to Gold facts
-    output_path = config.GOLD_DIR + '/facts/fact_player_performance.parquet'
+    output_path = os.path.join(config.GOLD_DIR, 'facts', 'fact_player_performance.parquet')
     fact_performance.to_parquet(output_path, index=False, engine='pyarrow')
     
     logging.info(f"✅ fact_player_performance created: {len(fact_performance)} records")
@@ -200,7 +199,7 @@ def create_fact_manager_picks() -> pd.DataFrame:
     fact_picks = fact_picks[cols]
     
     # Save to Gold facts
-    output_path = config.GOLD_DIR + '/facts/fact_manager_picks.parquet'
+    output_path = os.path.join(config.GOLD_DIR, 'facts', 'fact_manager_picks.parquet')
     fact_picks.to_parquet(output_path, index=False, engine='pyarrow')
     
     logging.info(f"✅ fact_manager_picks created: {len(fact_picks)} picks")
@@ -221,14 +220,14 @@ def create_manager_gameweek_performance() -> pd.DataFrame:
     logging.info("🔄 Creating manager_gameweek_performance (denormalized)...")
     
     # Load fact tables
-    fact_picks = pd.read_parquet(config.GOLD_DIR + '/facts/fact_manager_picks.parquet')
-    fact_performance = pd.read_parquet(config.GOLD_DIR + '/facts/fact_player_performance.parquet')
+    fact_picks = pd.read_parquet(os.path.join(config.GOLD_DIR, 'facts', 'fact_manager_picks.parquet'))
+    fact_performance = pd.read_parquet(os.path.join(config.GOLD_DIR, 'facts', 'fact_player_performance.parquet'))
     
     # Load dimensions
-    dim_managers = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_managers.parquet')
-    dim_players = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_players.parquet')
-    dim_clubs = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_clubs.parquet')
-    dim_gameweeks = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_gameweeks.parquet')
+    dim_managers = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_managers.parquet'))
+    dim_players = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet'))
+    dim_clubs = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_clubs.parquet'))
+    dim_gameweeks = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_gameweeks.parquet'))
     
     # Start with manager picks
     mgr_performance = fact_picks.copy()
@@ -319,7 +318,7 @@ def create_manager_gameweek_performance() -> pd.DataFrame:
     mgr_performance = mgr_performance.sort_values(sort_cols)
     
     # Save to Gold facts
-    output_path = config.GOLD_DIR + '/facts/manager_gameweek_performance.parquet'
+    output_path = os.path.join(config.GOLD_DIR, 'facts', 'manager_gameweek_performance.parquet')
     mgr_performance.to_parquet(output_path, index=False, engine='pyarrow')
     
     logging.info(f"✅ manager_gameweek_performance created: {len(mgr_performance)} records")
@@ -329,23 +328,17 @@ def create_manager_gameweek_performance() -> pd.DataFrame:
 def main():
     """Create all fact tables."""
     logging.info("📊 Creating dimensional model - Facts...")
-    
-    import os
-    os.makedirs(config.GOLD_DIR + '/facts', exist_ok=True)
-    
-    # Create fact tables
-    # IMPORTANT: Pass incremental=False to force full rebuild from downloaded Silver files
-    # In GitHub Actions, we download all Silver gameweeks first, so rebuilding ensures all data is included
-    create_fact_player_performance(incremental=False)  # Gameweek-level stats (full rebuild)
+
+    os.makedirs(os.path.join(config.GOLD_DIR, 'facts'), exist_ok=True)
+
+    # Full rebuild ensures all downloaded Silver files are included (important for GitHub Actions)
+    create_fact_player_performance(incremental=False)
     create_fact_manager_picks()
-    
-    # Create player seasonal stats (new)
-    from src.etl import gold_seasonal_stats
+
     gold_seasonal_stats.create_fact_player_seasonal_stats()
-    
-    # Create denormalized manager performance table
+
     create_manager_gameweek_performance()
-    
+
     logging.info("🎉 All facts created!")
 
 

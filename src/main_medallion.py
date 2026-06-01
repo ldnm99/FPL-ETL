@@ -6,8 +6,9 @@ This pipeline extracts FPL data and processes it through three layers:
 - Silver: Cleaned and validated data (CSV/Parquet)
 - Gold: Analytics-ready aggregated data (Parquet)
 """
-import os
+import json
 import logging
+import os
 import sys
 
 # Add parent directory to path for relative imports
@@ -16,7 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from src.config import config
 from src.etl import bronze, silver, gold, upload_database
 
-# Configure logging
+# Configure logging once at the application entrypoint
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
@@ -71,22 +72,9 @@ def run_bronze_layer():
     logging.info("=" * 60)
     logging.info("🥉 BRONZE LAYER: Extracting raw data from FPL API")
     logging.info("=" * 60)
-    
-    # Extract league data
-    logging.info("📊 Fetching league standings...")
-    bronze.extract_league_raw()
-    
-    # Extract player data
-    logging.info("🧍 Fetching player data...")
-    bronze.extract_players_raw()
-    
-    # Extract fixtures data
-    logging.info("📅 Fetching fixtures data...")
-    bronze.extract_fixtures_raw()
-    
-    # Use bronze module's logic which respects INCREMENTAL_MODE
+
     bronze.main()
-    
+
     logging.info("✅ Bronze layer extraction complete!\n")
 
 
@@ -112,7 +100,6 @@ def run_silver_layer():
     current_gw = bronze.get_current_gameweek()
     
     # Load manager IDs
-    import json
     with open(config.BRONZE_LEAGUE_RAW, 'r') as f:
         league_data = json.load(f)
     manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
@@ -183,6 +170,9 @@ def run_pipeline():
     logging.info("\n")
     
     try:
+        # Fail fast if Supabase credentials are not configured
+        config.validate()
+
         # Bronze Layer: Extract raw data
         run_bronze_layer()
         

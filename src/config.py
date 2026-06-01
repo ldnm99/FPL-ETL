@@ -18,8 +18,8 @@ class Config:
     DATA_DIR: str = "Data"
     
     # Pipeline mode
-    INCREMENTAL_MODE: bool = False  # Always fetch and process all gameweeks
-    INCREMENTAL_GAMEWEEKS: int = 2  # Not used when INCREMENTAL_MODE=False
+    INCREMENTAL_MODE: bool = False  # False = full load (all GWs); True = incremental (last N GWs only)
+    INCREMENTAL_GAMEWEEKS: int = 2  # Number of recent GWs to process when INCREMENTAL_MODE=True
     
     # Medallion Layer Directories
     BRONZE_DIR: Optional[str] = None
@@ -103,6 +103,19 @@ class Config:
         for directory in directories:
             os.makedirs(directory, exist_ok=True)
     
+    def validate(self):
+        """Raise at startup if required environment variables are missing."""
+        missing = []
+        if not self.SUPABASE_URL:
+            missing.append("SUPABASE_URL")
+        if not self.SUPABASE_KEY:
+            missing.append("SUPABASE_SERVICE_KEY")
+        if missing:
+            raise EnvironmentError(
+                f"Missing required environment variable(s): {', '.join(missing)}. "
+                "Set them in your .env file or environment before running the pipeline."
+            )
+
     def get_bronze_gameweek_path(self, gameweek: int) -> str:
         """Get path for Bronze layer gameweek raw data."""
         return os.path.join(self.BRONZE_GAMEWEEKS_DIR, f"gw_{gameweek}_raw.json")

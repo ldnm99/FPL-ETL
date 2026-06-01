@@ -6,8 +6,8 @@ import logging
 import pandas as pd
 from typing import Optional
 from src.config import config
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+from src.etl.silver import merge_all_gameweeks
+from src.etl import gold_dimensions, gold_facts
 
 
 def create_full_gameweek_dataset() -> pd.DataFrame:
@@ -21,7 +21,6 @@ def create_full_gameweek_dataset() -> pd.DataFrame:
     logging.info("🔄 Creating Gold: Full gameweek dataset")
     
     # Load Silver layer data
-    from src.etl.silver import merge_all_gameweeks
     df_gameweeks = merge_all_gameweeks()
     
     if df_gameweeks.empty:
@@ -195,10 +194,8 @@ def main():
     
     # Create dimensional model (star schema)
     logging.info("📊 Creating dimensional model (star schema)...")
-    from src.etl import gold_dimensions, gold_facts
-    
-    gold_dimensions.main()  # Create dimension tables
-    gold_facts.main()       # Create fact tables
+    gold_dimensions.main()
+    gold_facts.main()
     
     logging.info("🎉 Gold Layer aggregations complete!")
 

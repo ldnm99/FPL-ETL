@@ -9,8 +9,6 @@ from typing import Dict, Any, List
 from src.utils import fetch_data
 from src.config import config
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
 
 def save_raw_json(data: Dict[Any, Any], file_path: str) -> None:
     """Save raw JSON data to file."""
@@ -32,13 +30,12 @@ def extract_league_raw() -> Dict[Any, Any]:
     data = fetch_data(url)
     
     if not data:
-        logging.error(f"❌ No league data found for league ID {config.LEAGUE_ID}")
-        return {}
-    
+        raise RuntimeError(f"Failed to fetch league data for league ID {config.LEAGUE_ID}")
+
     # Save raw JSON to Bronze layer
     save_raw_json(data, config.BRONZE_LEAGUE_RAW)
     logging.info(f"✅ Bronze: League raw data saved")
-    
+
     return data
 
 
@@ -55,29 +52,37 @@ def extract_players_raw() -> Dict[Any, Any]:
     data = fetch_data(url)
     
     if not data:
-        logging.error("❌ No player data found")
-        return {}
-    
+        raise RuntimeError("Failed to fetch player data from bootstrap-static")
+
     # Save raw JSON to Bronze layer
     save_raw_json(data, config.BRONZE_PLAYERS_RAW)
     logging.info(f"✅ Bronze: Player raw data saved")
-    
+
     return data
 
 
-def extract_fixtures_raw() -> List[Dict[Any, Any]]:
+def extract_fixtures_raw(force: bool = False) -> List[Dict[Any, Any]]:
     """
     Extract raw fixtures data from bootstrap-static endpoint.
     The Draft API includes fixtures in the bootstrap-static response.
-    
+
+    Fixtures are static for the season. This function skips the API call
+    if the file already exists unless force=True.
+
+    Args:
+        force: If True, re-fetch even if the file already exists.
+
     Returns:
         List of fixture dicts
     """
-    import os
-    import json
+    fixtures_path = os.path.join(config.BRONZE_DIR, "fixtures_raw.json")
+
+    if not force and os.path.exists(fixtures_path):
+        logging.info("⏭️ Fixtures already fetched — skipping (pass force=True to refresh)")
+        return []
+
     logging.info("🏟️ Extracting fixtures from bootstrap-static...")
     
-    # Load player data (which contains fixtures)
     if not os.path.exists(config.BRONZE_PLAYERS_RAW):
         logging.error(f"❌ Bootstrap-static not found: {config.BRONZE_PLAYERS_RAW}")
         logging.info("Run extract_players_raw() first")
@@ -193,34 +198,42 @@ def get_current_gameweek() -> int:
     return 1
 
 
+def _load_manager_ids() -> List[int]:
+    """
+    Load manager IDs from the Bronze league file.
+    Fetches league data first if the file doesn't exist yet.
+
+    Returns:
+        List of manager entry IDs.
+    """
+    if not os.path.exists(config.BRONZE_LEAGUE_RAW):
+        logging.warning("⚠️ League data not found, extracting first...")
+        extract_league_raw()
+
+    with open(config.BRONZE_LEAGUE_RAW, 'r') as f:
+        league_data = json.load(f)
+    return [entry['entry_id'] for entry in league_data.get('league_entries', [])]
+
+
 def extract_all_gameweeks():
     """
     Extract ALL gameweeks from GW1 to current (full historical load).
     Use this for initial data load.
     """
     logging.info(f"🔄 Extracting ALL gameweeks (full load)...")
-    
-    # Get current gameweek
+
     current_gw = get_current_gameweek()
     logging.info(f"📅 Current gameweek: {current_gw}")
-    
-    # Load league data to get manager IDs
-    import json
-    if not os.path.exists(config.BRONZE_LEAGUE_RAW):
-        logging.warning("⚠️ League data not found, extracting first...")
-        extract_league_raw()
-    
-    with open(config.BRONZE_LEAGUE_RAW, 'r') as f:
-        league_data = json.load(f)
-    manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
-    
+
+    manager_ids = _load_manager_ids()
+
     logging.info(f"📈 Extracting gameweeks 1 to {current_gw}")
-    
+
     for gw in range(1, current_gw + 1):
         logging.info(f"  Extracting GW{gw}...")
         extract_gameweek_raw(gw)
         extract_all_manager_picks_raw(manager_ids, gw)
-    
+
     logging.info(f"✅ All {current_gw} gameweeks extracted!")
 
 
@@ -228,36 +241,25 @@ def extract_recent_gameweeks(num_gameweeks: int = 2):
     """
     Extract only the most recent gameweeks (incremental update).
     This is more efficient than re-extracting all historical data.
-    
+
     Args:
         num_gameweeks: Number of recent gameweeks to update (default: 2)
     """
     logging.info(f"🔄 Extracting last {num_gameweeks} gameweeks (incremental update)...")
-    
-    # Get current gameweek
+
     current_gw = get_current_gameweek()
     logging.info(f"📅 Current gameweek: {current_gw}")
-    
-    # Load league data to get manager IDs
-    import json
-    if not os.path.exists(config.BRONZE_LEAGUE_RAW):
-        logging.warning("⚠️ League data not found, extracting first...")
-        extract_league_raw()
-    
-    with open(config.BRONZE_LEAGUE_RAW, 'r') as f:
-        league_data = json.load(f)
-    manager_ids = [entry['entry_id'] for entry in league_data.get('league_entries', [])]
-    
-    # Calculate which gameweeks to extract (current and previous)
+
+    manager_ids = _load_manager_ids()
+
     start_gw = max(1, current_gw - num_gameweeks + 1)
-    
     logging.info(f"📈 Updating gameweeks {start_gw} to {current_gw}")
-    
+
     for gw in range(start_gw, current_gw + 1):
         logging.info(f"  Updating GW{gw}...")
         extract_gameweek_raw(gw)
         extract_all_manager_picks_raw(manager_ids, gw)
-    
+
     logging.info(f"✅ Last {num_gameweeks} gameweeks updated!")
 
 

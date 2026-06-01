@@ -8,8 +8,6 @@ from datetime import datetime, timezone
 from typing import Union
 from src.config import config
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
 # --------------------------
 # Supabase Client Setup (Lazy Initialization)
 # --------------------------
