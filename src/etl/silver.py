@@ -306,8 +306,10 @@ def transform_fixtures() -> pd.DataFrame:
     raw_data = load_bronze_json(fixtures_path)
     
     if not raw_data:
-        logging.error("❌ No fixtures data found")
-        return pd.DataFrame()
+        raise RuntimeError(
+            f"No fixtures data found in Bronze layer: {fixtures_path}. "
+            "Run extract_fixtures_raw() before transform_fixtures()."
+        )
     
     # Fixtures are grouped by gameweek number as dict keys
     # Flatten the structure
@@ -317,8 +319,10 @@ def transform_fixtures() -> pd.DataFrame:
             all_fixtures.extend(fixtures_list)
     
     if not all_fixtures:
-        logging.warning("⚠️ No fixtures found after flattening")
-        return pd.DataFrame()
+        raise RuntimeError(
+            "No fixtures found after flattening fixtures_raw.json. "
+            "The Bronze fixtures file may be malformed or empty."
+        )
     
     # Transform to DataFrame
     df = pd.DataFrame(all_fixtures)

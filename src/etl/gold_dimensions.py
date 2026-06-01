@@ -139,20 +139,18 @@ def create_dim_fixtures() -> pd.DataFrame:
     silver_fixtures_path = os.path.join(config.SILVER_DIR, "fixtures.parquet")
     
     if not os.path.exists(silver_fixtures_path):
-        logging.error(f"❌ No fixtures data found in Silver layer: {silver_fixtures_path}")
-        empty_df = pd.DataFrame(columns=['fixture_id'])
-        output_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_fixtures.parquet')
-        empty_df.to_parquet(output_path, index=False, engine='pyarrow')
-        return empty_df
+        raise FileNotFoundError(
+            f"Silver fixtures not found: {silver_fixtures_path}. "
+            "Run silver.main() (transform_fixtures) before gold_dimensions.main()."
+        )
     
     df = pd.read_parquet(silver_fixtures_path)
     
     if df.empty:
-        logging.warning("⚠️ Fixtures data is empty")
-        empty_df = pd.DataFrame(columns=['fixture_id'])
-        output_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_fixtures.parquet')
-        empty_df.to_parquet(output_path, index=False, engine='pyarrow')
-        return empty_df
+        raise RuntimeError(
+            "Silver fixtures is empty — cannot build dim_fixtures. "
+            "Check that transform_fixtures() produced data and re-run."
+        )
     
     # Rename columns to match star schema naming
     rename_map = {
