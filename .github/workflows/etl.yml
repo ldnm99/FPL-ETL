@@ -16,10 +16,14 @@ on:
   # External API triggers
   repository_dispatch:
     types: [run_pipeline]
+
+permissions:
+  contents: read
     
 jobs:
   etl_job:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -27,17 +31,22 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: 'pip'
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.lock --no-deps || pip install -r requirements.txt
+          if [ -f requirements.lock ]; then
+            pip install -r requirements.lock --no-deps
+          else
+            echo "⚠️ requirements.lock not found — falling back to requirements.txt (non-reproducible)"
+            pip install -r requirements.txt
+          fi
 
       - name: Run Medallion ETL Pipeline
         run: |

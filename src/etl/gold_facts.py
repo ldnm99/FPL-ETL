@@ -67,7 +67,13 @@ def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFr
     fact_performance = pd.concat(dfs, ignore_index=True)
     
     # Load dim_players to get player_key and club_id
-    dim_players = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet'))
+    dim_players_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet')
+    if not os.path.exists(dim_players_path):
+        raise FileNotFoundError(
+            f"Required dimension file not found: {dim_players_path}. "
+            "Run gold_dimensions.main() before gold_facts.main()."
+        )
+    dim_players = pd.read_parquet(dim_players_path)
     player_mapping = dim_players[['player_id', 'player_key', 'club_id']].copy()
     
     # Merge to get player_key and club_id
@@ -219,15 +225,31 @@ def create_manager_gameweek_performance() -> pd.DataFrame:
     """
     logging.info("🔄 Creating manager_gameweek_performance (denormalized)...")
     
+    # Check all required files exist before reading
+    required_files = {
+        'fact_manager_picks': os.path.join(config.GOLD_DIR, 'facts', 'fact_manager_picks.parquet'),
+        'fact_player_performance': os.path.join(config.GOLD_DIR, 'facts', 'fact_player_performance.parquet'),
+        'dim_managers': os.path.join(config.GOLD_DIR, 'dimensions', 'dim_managers.parquet'),
+        'dim_players': os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet'),
+        'dim_clubs': os.path.join(config.GOLD_DIR, 'dimensions', 'dim_clubs.parquet'),
+        'dim_gameweeks': os.path.join(config.GOLD_DIR, 'dimensions', 'dim_gameweeks.parquet'),
+    }
+    missing = [name for name, path in required_files.items() if not os.path.exists(path)]
+    if missing:
+        raise FileNotFoundError(
+            f"Required files missing for manager_gameweek_performance: {', '.join(missing)}. "
+            "Run create_fact_player_performance(), create_fact_manager_picks(), and gold_dimensions.main() first."
+        )
+
     # Load fact tables
-    fact_picks = pd.read_parquet(os.path.join(config.GOLD_DIR, 'facts', 'fact_manager_picks.parquet'))
-    fact_performance = pd.read_parquet(os.path.join(config.GOLD_DIR, 'facts', 'fact_player_performance.parquet'))
+    fact_picks = pd.read_parquet(required_files['fact_manager_picks'])
+    fact_performance = pd.read_parquet(required_files['fact_player_performance'])
     
     # Load dimensions
-    dim_managers = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_managers.parquet'))
-    dim_players = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet'))
-    dim_clubs = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_clubs.parquet'))
-    dim_gameweeks = pd.read_parquet(os.path.join(config.GOLD_DIR, 'dimensions', 'dim_gameweeks.parquet'))
+    dim_managers = pd.read_parquet(required_files['dim_managers'])
+    dim_players = pd.read_parquet(required_files['dim_players'])
+    dim_clubs = pd.read_parquet(required_files['dim_clubs'])
+    dim_gameweeks = pd.read_parquet(required_files['dim_gameweeks'])
     
     # Start with manager picks
     mgr_performance = fact_picks.copy()
