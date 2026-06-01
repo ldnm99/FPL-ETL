@@ -1,6 +1,7 @@
 import os
 import csv
 import logging
+import random
 import pandas as pd
 import requests
 import time
@@ -34,11 +35,16 @@ def fetch_data(url: str, retries: int = 3, delay: int = 2, timeout: int = 10) ->
         try:
             response = session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                logging.error(f"❌ Invalid JSON from {url} (attempt {attempt}): {response.text[:200]}")
+                return None
         except requests.RequestException as e:
             logging.warning(f"Attempt {attempt}/{retries} failed for {url}: {e}")
             if attempt < retries:
-                time.sleep(delay)
+                backoff = delay * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+                time.sleep(backoff)
             else:
                 logging.error(f"❌ Failed to fetch data from {url} after {retries} attempts.")
                 return None
@@ -63,6 +69,7 @@ def save_csv(filename: str, headers: List[str], rows: List[List[Any]]):
         logging.info(f"✅ Saved CSV: {filename}")
     except Exception as e:
         logging.error(f"Failed to save CSV {filename}: {e}")
+        raise
 
 def load_csv(filename: str) -> pd.DataFrame:
     """

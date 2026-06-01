@@ -4,6 +4,7 @@ This module reads raw JSON from Bronze layer and produces CSV/Parquet files.
 """
 import json
 import logging
+import os
 import pandas as pd
 from typing import Dict, Any, List
 from src.config import config
@@ -267,9 +268,6 @@ def merge_all_gameweeks() -> pd.DataFrame:
         Merged DataFrame with all gameweeks
     """
     logging.info("🔄 Merging all Silver gameweek files")
-    
-    import os
-    
     # Find all gameweek parquet files
     gw_files = sorted([
         f for f in os.listdir(config.SILVER_GAMEWEEKS_DIR)
@@ -301,7 +299,6 @@ def transform_fixtures() -> pd.DataFrame:
     Returns:
         DataFrame with fixtures data
     """
-    import os
     logging.info("🔄 Transforming fixtures (Bronze → Silver)")
     
     # Load raw fixtures from Bronze

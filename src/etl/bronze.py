@@ -84,16 +84,16 @@ def extract_fixtures_raw(force: bool = False) -> List[Dict[Any, Any]]:
     logging.info("🏟️ Extracting fixtures from bootstrap-static...")
     
     if not os.path.exists(config.BRONZE_PLAYERS_RAW):
-        logging.error(f"❌ Bootstrap-static not found: {config.BRONZE_PLAYERS_RAW}")
-        logging.info("Run extract_players_raw() first")
-        return []
+        raise RuntimeError(
+            f"Bootstrap-static not found at {config.BRONZE_PLAYERS_RAW}. "
+            "Run extract_players_raw() first."
+        )
     
     with open(config.BRONZE_PLAYERS_RAW, 'r', encoding='utf-8') as f:
         raw_data = json.load(f)
     
     if not raw_data or 'fixtures' not in raw_data:
-        logging.error("❌ No fixtures data found in bootstrap-static")
-        return []
+        raise RuntimeError("No fixtures data found in bootstrap-static response.")
     
     fixtures = raw_data['fixtures']
     
@@ -210,6 +210,11 @@ def _load_manager_ids() -> List[int]:
         logging.warning("⚠️ League data not found, extracting first...")
         extract_league_raw()
 
+    if not os.path.exists(config.BRONZE_LEAGUE_RAW):
+        raise RuntimeError(
+            f"League raw file still missing after extraction attempt: {config.BRONZE_LEAGUE_RAW}"
+        )
+
     with open(config.BRONZE_LEAGUE_RAW, 'r') as f:
         league_data = json.load(f)
     return [entry['entry_id'] for entry in league_data.get('league_entries', [])]
@@ -231,8 +236,11 @@ def extract_all_gameweeks():
 
     for gw in range(1, current_gw + 1):
         logging.info(f"  Extracting GW{gw}...")
-        extract_gameweek_raw(gw)
-        extract_all_manager_picks_raw(manager_ids, gw)
+        try:
+            extract_gameweek_raw(gw)
+            extract_all_manager_picks_raw(manager_ids, gw)
+        except Exception as e:
+            logging.error(f"❌ Failed to extract GW{gw}: {e} — skipping")
 
     logging.info(f"✅ All {current_gw} gameweeks extracted!")
 
@@ -257,8 +265,11 @@ def extract_recent_gameweeks(num_gameweeks: int = 2):
 
     for gw in range(start_gw, current_gw + 1):
         logging.info(f"  Updating GW{gw}...")
-        extract_gameweek_raw(gw)
-        extract_all_manager_picks_raw(manager_ids, gw)
+        try:
+            extract_gameweek_raw(gw)
+            extract_all_manager_picks_raw(manager_ids, gw)
+        except Exception as e:
+            logging.error(f"❌ Failed to update GW{gw}: {e} — skipping")
 
     logging.info(f"✅ Last {num_gameweeks} gameweeks updated!")
 
