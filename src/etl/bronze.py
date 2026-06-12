@@ -63,8 +63,9 @@ def extract_players_raw() -> Dict[Any, Any]:
 
 def extract_fixtures_raw(force: bool = False) -> List[Dict[Any, Any]]:
     """
-    Extract raw fixtures data from bootstrap-static endpoint.
-    The Draft API includes fixtures in the bootstrap-static response.
+    Extract raw fixtures data.
+    Attempts to read from the bootstrap-static response, and if empty,
+    falls back to the standard FPL fixtures API.
 
     Fixtures are static for the season. This function skips the API call
     if the file already exists unless force=True.
@@ -73,7 +74,7 @@ def extract_fixtures_raw(force: bool = False) -> List[Dict[Any, Any]]:
         force: If True, re-fetch even if the file already exists.
 
     Returns:
-        List of fixture dicts
+        List or dict of fixtures data
     """
     fixtures_path = os.path.join(config.BRONZE_DIR, "fixtures_raw.json")
 
@@ -81,24 +82,30 @@ def extract_fixtures_raw(force: bool = False) -> List[Dict[Any, Any]]:
         logging.info("⏭️ Fixtures already fetched — skipping (pass force=True to refresh)")
         return []
 
-    logging.info("🏟️ Extracting fixtures from bootstrap-static...")
+    logging.info("🏟️ Extracting fixtures...")
     
-    if not os.path.exists(config.BRONZE_PLAYERS_RAW):
+    fixtures = []
+    
+    # Try getting fixtures from Draft bootstrap-static first
+    if os.path.exists(config.BRONZE_PLAYERS_RAW):
+        with open(config.BRONZE_PLAYERS_RAW, 'r', encoding='utf-8') as f:
+            raw_data = json.load(f)
+        if raw_data and 'fixtures' in raw_data and raw_data['fixtures']:
+            fixtures = raw_data['fixtures']
+            logging.info("🏟️ Found fixtures in Draft bootstrap-static response")
+    
+    # Fallback to standard FPL API if empty
+    if not fixtures:
+        logging.info("🏟️ Draft bootstrap-static fixtures empty/missing. Fetching from standard FPL API...")
+        url = "https://fantasy.premierleague.com/api/fixtures/"
+        fixtures = fetch_data(url)
+    
+    if not fixtures:
         raise RuntimeError(
-            f"Bootstrap-static not found at {config.BRONZE_PLAYERS_RAW}. "
-            "Run extract_players_raw() first."
+            "Failed to fetch fixtures from both Draft bootstrap-static and standard FPL API."
         )
     
-    with open(config.BRONZE_PLAYERS_RAW, 'r', encoding='utf-8') as f:
-        raw_data = json.load(f)
-    
-    if not raw_data or 'fixtures' not in raw_data:
-        raise RuntimeError("No fixtures data found in bootstrap-static response.")
-    
-    fixtures = raw_data['fixtures']
-    
     # Save raw JSON to Bronze layer
-    fixtures_path = os.path.join(config.BRONZE_DIR, "fixtures_raw.json")
     save_raw_json(fixtures, fixtures_path)
     logging.info(f"✅ Bronze: Fixtures raw data saved ({len(fixtures)} fixtures)")
     

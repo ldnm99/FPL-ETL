@@ -311,12 +311,14 @@ def transform_fixtures() -> pd.DataFrame:
             "Run extract_fixtures_raw() before transform_fixtures()."
         )
     
-    # Fixtures are grouped by gameweek number as dict keys
-    # Flatten the structure
+    # Flatten the structure (handles both grouped dict format and flat list format)
     all_fixtures = []
-    for gw_num, fixtures_list in raw_data.items():
-        if isinstance(fixtures_list, list):
-            all_fixtures.extend(fixtures_list)
+    if isinstance(raw_data, list):
+        all_fixtures = raw_data
+    elif isinstance(raw_data, dict):
+        for gw_num, fixtures_list in raw_data.items():
+            if isinstance(fixtures_list, list):
+                all_fixtures.extend(fixtures_list)
     
     if not all_fixtures:
         raise RuntimeError(
