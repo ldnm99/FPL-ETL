@@ -198,10 +198,10 @@ def get_current_gameweek() -> int:
     url = f"{config.BASE_URL}/game"
     data = fetch_data(url)
     
-    if data and 'current_event' in data:
+    if data and data.get('current_event') is not None:
         return data['current_event']
     
-    logging.warning("⚠️ Could not determine current gameweek, defaulting to 1")
+    logging.warning("⚠️ Could not determine active gameweek (pre-season / GW1 pending), defaulting to 1")
     return 1
 
 

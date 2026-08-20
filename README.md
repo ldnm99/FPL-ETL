@@ -135,7 +135,7 @@ See [`.github/workflows/etl.yml`](.github/workflows/etl.yml) for configuration.
 Edit `src/config.py` to customize:
 
 ```python
-LEAGUE_ID = "24636"  # Your FPL Draft league ID
+LEAGUE_ID = "38279"  # Your FPL Draft league ID
 BASE_URL = "https://draft.premierleague.com/api"
 ```
 
@@ -298,7 +298,7 @@ cd FPL-ETL
 pip install -r requirements.txt
 
 # 3. Set environment variables (Windows PowerShell)
-$env:FPL_LEAGUE_ID = '24636'
+$env:FPL_LEAGUE_ID = '38279'
 $env:SUPABASE_URL = 'https://your-project.supabase.co'
 $env:SUPABASE_SERVICE_KEY = 'your-service-key'
 
@@ -332,7 +332,7 @@ Supabase: data/
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| `FPL_LEAGUE_ID` | No | Your FPL draft league ID | `24636` |
+| `FPL_LEAGUE_ID` | No | Your FPL draft league ID | `38279` |
 | `SUPABASE_URL` | Yes | Supabase project URL | None |
 | `SUPABASE_SERVICE_KEY` | Yes | Supabase service account key | None |
 
@@ -609,7 +609,7 @@ logging.basicConfig(level=logging.DEBUG)
 **Using `.env` file (not committed):**
 ```bash
 # Create .env
-FPL_LEAGUE_ID=24636
+FPL_LEAGUE_ID=38279
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-secret-key
 

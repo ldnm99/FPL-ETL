@@ -33,6 +33,20 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
+def ensure_bucket_exists(bucket_name: str = None) -> None:
+    """Ensure the target Supabase Storage bucket exists, creating it if missing."""
+    bucket = bucket_name or config.SUPABASE_BUCKET
+    try:
+        supabase = get_supabase_client()
+        existing_buckets = [b.name for b in supabase.storage.list_buckets()]
+        if bucket not in existing_buckets:
+            logging.info(f"🪣 Bucket '{bucket}' does not exist. Creating public bucket...")
+            supabase.storage.create_bucket(bucket, options={"public": True})
+            logging.info(f"✅ Created bucket: {bucket}")
+    except Exception as e:
+        logging.warning(f"⚠️ Could not check/create bucket '{bucket}': {e}")
+
+
 # --------------------------
 # Upload Helpers
 # --------------------------
@@ -373,8 +387,9 @@ def update_timestamp(layer: str = "all"):
         with open(timestamp_file, "w") as f:
             json.dump(timestamp_content, f, indent=2)
         
+        ts_path = f"{config.SEASON_PREFIX}/last_updated.json" if config.SEASON_PREFIX else "last_updated.json"
         supabase.storage.from_(config.SUPABASE_BUCKET).upload(
-            path="last_updated.json",
+            path=ts_path,
             file=json.dumps(timestamp_content).encode("utf-8"),
             file_options={"content-type": "application/json", "upsert": "true"}
         )
@@ -397,6 +412,7 @@ def main(recent_gws_only: bool = True, num_gws: int = 2):
         num_gws: Number of recent gameweeks to upload (default: 2)
     """
     logging.info("⬆️  Starting medallion layer uploads...")
+    ensure_bucket_exists()
     
     if recent_gws_only:
         logging.info(f"📅 Bronze/Silver: Only uploading last {num_gws} gameweeks")

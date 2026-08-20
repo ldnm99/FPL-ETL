@@ -34,6 +34,9 @@ def fetch_data(url: str, retries: int = 3, delay: int = 2, timeout: int = 10) ->
     for attempt in range(1, retries + 1):
         try:
             response = session.get(url, headers=headers, timeout=timeout)
+            if response.status_code == 404:
+                logging.info(f"ℹ️ Endpoint not found (HTTP 404): {url}")
+                return None
             response.raise_for_status()
             try:
                 return response.json()

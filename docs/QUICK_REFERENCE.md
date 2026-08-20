@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Set environment variables
-$env:FPL_LEAGUE_ID = '24636'
+$env:FPL_LEAGUE_ID = '38279'
 $env:SUPABASE_URL = 'https://your-project.supabase.co'
 $env:SUPABASE_SERVICE_KEY = 'your-service-key'
 

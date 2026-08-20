@@ -65,6 +65,11 @@ def create_fact_player_performance(incremental=False, recent_gws=2) -> pd.DataFr
         return existing_df if existing_df is not None else pd.DataFrame()
     
     fact_performance = pd.concat(dfs, ignore_index=True)
+    if fact_performance.empty or 'ID' not in fact_performance.columns:
+        logging.info("✅ No gameweek performance records found (pre-season/0 records)")
+        output_path = os.path.join(config.GOLD_DIR, 'facts', 'fact_player_performance.parquet')
+        fact_performance.to_parquet(output_path, index=False, engine='pyarrow')
+        return fact_performance
     
     # Load dim_players to get player_key and club_id
     dim_players_path = os.path.join(config.GOLD_DIR, 'dimensions', 'dim_players.parquet')
@@ -181,7 +186,12 @@ def create_fact_manager_picks() -> pd.DataFrame:
         df = pd.read_parquet(file_path)
         dfs.append(df)
     
-    fact_picks = pd.concat(dfs, ignore_index=True)
+    fact_picks = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    if fact_picks.empty or 'manager_id' not in fact_picks.columns:
+        logging.info("✅ No manager picks found (pre-season/0 picks)")
+        output_path = os.path.join(config.GOLD_DIR, 'facts', 'fact_manager_picks.parquet')
+        fact_picks.to_parquet(output_path, index=False, engine='pyarrow')
+        return fact_picks
     
     # Filter only rows where manager_id is not null (actual picks)
     fact_picks = fact_picks[fact_picks['manager_id'].notna()].copy()
@@ -253,6 +263,11 @@ def create_manager_gameweek_performance() -> pd.DataFrame:
     
     # Start with manager picks
     mgr_performance = fact_picks.copy()
+    if mgr_performance.empty:
+        logging.info("✅ No manager picks found (pre-season/0 records)")
+        output_path = os.path.join(config.GOLD_DIR, 'facts', 'manager_gameweek_performance.parquet')
+        mgr_performance.to_parquet(output_path, index=False, engine='pyarrow')
+        return mgr_performance
     
     # Join with player performance
     mgr_performance = mgr_performance.merge(

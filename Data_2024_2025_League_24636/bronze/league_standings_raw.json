@@ -1,0 +1,164 @@
+{
+  "league": {
+    "admin_entry": 115613,
+    "closed": true,
+    "draft_dt": "2025-08-06T21:00:00Z",
+    "draft_pick_time_limit": 90,
+    "draft_status": "pre",
+    "draft_tz_show": "Europe/Lisbon",
+    "id": 24636,
+    "ko_rounds": 0,
+    "make_code_public": false,
+    "max_entries": 8,
+    "min_entries": 2,
+    "name": "Dobradinha",
+    "scoring": "c",
+    "start_event": 1,
+    "stop_event": 38,
+    "trades": "y",
+    "transaction_mode": "finished",
+    "variety": "x",
+    "drafts": [
+      {
+        "id": 25982,
+        "draft_started": true,
+        "draft_completed": "2025-08-06T21:34:50.795640Z",
+        "draft_dt": "2025-08-06T21:00:00Z",
+        "event": 1,
+        "league": 24636,
+        "order_method": "random"
+      }
+    ],
+    "is_renewed": false
+  },
+  "league_entries": [
+    {
+      "entry_id": 115613,
+      "entry_name": "Blue Lock XI",
+      "id": 112854,
+      "joined_time": "2025-08-05T15:39:46.814199Z",
+      "player_first_name": "Lourenço",
+      "player_last_name": "Marvão",
+      "short_name": "LM",
+      "waiver_pick": null
+    },
+    {
+      "entry_id": 123808,
+      "entry_name": "Into the SpiderWirtz",
+      "id": 121090,
+      "joined_time": "2025-08-05T22:13:35.691476Z",
+      "player_first_name": "Clev",
+      "player_last_name": "Clevinson Rodriguez",
+      "short_name": "CC",
+      "waiver_pick": null
+    },
+    {
+      "entry_id": 127197,
+      "entry_name": "Jurojocav3",
+      "id": 124508,
+      "joined_time": "2025-08-06T04:48:55.418020Z",
+      "player_first_name": "Bernardo",
+      "player_last_name": "Moura",
+      "short_name": "BM",
+      "waiver_pick": null
+    },
+    {
+      "entry_id": 132395,
+      "entry_name": "Ponto a Ponto FC",
+      "id": 129713,
+      "joined_time": "2025-08-06T11:10:50.348364Z",
+      "player_first_name": "Tiago",
+      "player_last_name": "Duarte",
+      "short_name": "TD",
+      "waiver_pick": null
+    },
+    {
+      "entry_id": 132835,
+      "entry_name": "LastYearFumble",
+      "id": 130156,
+      "joined_time": "2025-08-06T11:36:22.237599Z",
+      "player_first_name": "Diogo",
+      "player_last_name": "Santana",
+      "short_name": "DS",
+      "waiver_pick": null
+    },
+    {
+      "entry_id": 133418,
+      "entry_name": "Pieces of my Puzzle",
+      "id": 130743,
+      "joined_time": "2025-08-06T12:09:10.926356Z",
+      "player_first_name": "Vasco",
+      "player_last_name": "Carvalho",
+      "short_name": "VC",
+      "waiver_pick": null
+    },
+    {
+      "entry_id": 144396,
+      "entry_name": "Magic FC",
+      "id": 141792,
+      "joined_time": "2025-08-06T20:57:37.830674Z",
+      "player_first_name": "Luis",
+      "player_last_name": "Costa",
+      "short_name": "LC",
+      "waiver_pick": null
+    }
+  ],
+  "standings": [
+    {
+      "event_total": 36,
+      "last_rank": 1,
+      "league_entry": 112854,
+      "rank": 1,
+      "rank_sort": 1,
+      "total": 1843
+    },
+    {
+      "event_total": 53,
+      "last_rank": 2,
+      "league_entry": 129713,
+      "rank": 2,
+      "rank_sort": 2,
+      "total": 1807
+    },
+    {
+      "event_total": 23,
+      "last_rank": 3,
+      "league_entry": 141792,
+      "rank": 3,
+      "rank_sort": 3,
+      "total": 1767
+    },
+    {
+      "event_total": 28,
+      "last_rank": 4,
+      "league_entry": 121090,
+      "rank": 4,
+      "rank_sort": 4,
+      "total": 1686
+    },
+    {
+      "event_total": 30,
+      "last_rank": 5,
+      "league_entry": 130743,
+      "rank": 5,
+      "rank_sort": 5,
+      "total": 1671
+    },
+    {
+      "event_total": 41,
+      "last_rank": 6,
+      "league_entry": 124508,
+      "rank": 6,
+      "rank_sort": 6,
+      "total": 1619
+    },
+    {
+      "event_total": 33,
+      "last_rank": 7,
+      "league_entry": 130156,
+      "rank": 7,
+      "rank_sort": 7,
+      "total": 1477
+    }
+  ]
+}

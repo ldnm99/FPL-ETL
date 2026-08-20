@@ -44,7 +44,7 @@ class Config:
     GOLD_MANAGER_PERFORMANCE: Optional[str] = None
     
     # API Configuration
-    LEAGUE_ID: str = os.getenv("FPL_LEAGUE_ID", "24636")
+    LEAGUE_ID: str = os.getenv("FPL_LEAGUE_ID", "38279")
     BASE_URL: str = "https://draft.premierleague.com/api"
     RETRY_ATTEMPTS: int = 3
     RETRY_DELAY: int = 2
@@ -53,7 +53,8 @@ class Config:
     # Supabase Configuration
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
-    SUPABASE_BUCKET: str = "data"
+    SUPABASE_BUCKET: str = os.getenv("SUPABASE_BUCKET", "data")
+    SEASON_PREFIX: str = os.getenv("SEASON_PREFIX", "2025_2026")
     
     # Supabase Paths (with layer prefixes)
     SUPABASE_BRONZE_PREFIX: str = "bronze"
@@ -146,7 +147,10 @@ class Config:
         }
         
         prefix = layer_map.get(layer, layer)
-        return f"{prefix}/{filename}"
+        rel_path = f"{prefix}/{filename}"
+        if self.SEASON_PREFIX:
+            return f"{self.SEASON_PREFIX}/{rel_path}"
+        return rel_path
 
 
 # Singleton instance
