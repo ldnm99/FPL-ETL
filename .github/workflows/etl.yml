@@ -28,6 +28,9 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      FPL_LEAGUE_ID: ${{ secrets.FPL_LEAGUE_ID || '38279' }}
+      SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET || 'data' }}
+      SEASON_PREFIX: ${{ secrets.SEASON_PREFIX || '2025_2026' }}
 
     steps:
       - name: Checkout repository
