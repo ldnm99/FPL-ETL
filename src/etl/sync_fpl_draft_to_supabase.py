@@ -249,6 +249,11 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
             perf_records = []
             for elem_id, content in elements_stats.items():
                 stats = content.get("stats", {})
+                cbi = stats.get("clearances_blocks_interceptions", 0)
+                tackles = stats.get("tackles", 0)
+                recoveries = stats.get("recoveries", 0)
+                defcons_val = stats.get("defensive_contribution", cbi + tackles + recoveries)
+
                 perf_records.append({
                     "player_id": int(elem_id),
                     "gameweek_id": gw,
@@ -259,7 +264,7 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
                     "goals_conceded": stats.get("goals_conceded", 0),
                     "yellow_cards": stats.get("yellow_cards", 0),
                     "red_cards": stats.get("red_cards", 0),
-                    "saves": stats.get("saves", 0),
+                    "saves": defcons_val,
                     "bonus": stats.get("bonus", 0),
                     "bps": stats.get("bps", 0),
                     "minutes": stats.get("minutes", 0)
