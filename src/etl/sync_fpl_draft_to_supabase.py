@@ -245,17 +245,37 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
         try:
             live_data = fetch_json(f"/event/{gw}/live")
             elements_stats = live_data.get("elements", {})
+
+            # Fetch player position map from dim_players to distinguish DEF (2) vs MID (3)
+            pos_map = {}
+            try:
+                p_res = supabase.table("dim_players").select("id, element_type").execute()
+                if p_res.data:
+                    pos_map = {row["id"]: row.get("element_type", 3) for row in p_res.data}
+            except Exception:
+                pass
             
             perf_records = []
             for elem_id, content in elements_stats.items():
+                pid = int(elem_id)
                 stats = content.get("stats", {})
                 cbi = stats.get("clearances_blocks_interceptions", 0)
                 tackles = stats.get("tackles", 0)
                 recoveries = stats.get("recoveries", 0)
-                defcons_val = stats.get("defensive_contribution", cbi + tackles + recoveries)
+                p_pos = pos_map.get(pid, 3) # 1=GKP, 2=DEF, 3=MID, 4=FWD
+
+                def_contrib = stats.get("defensive_contribution")
+                if def_contrib is not None and def_contrib > 0:
+                    defcons_val = def_contrib
+                elif p_pos == 2:
+                    defcons_val = cbi + tackles
+                elif p_pos == 3:
+                    defcons_val = cbi + tackles + recoveries
+                else:
+                    defcons_val = 0
 
                 perf_records.append({
-                    "player_id": int(elem_id),
+                    "player_id": pid,
                     "gameweek_id": gw,
                     "total_points": stats.get("total_points", 0),
                     "goals_scored": stats.get("goals_scored", 0),
