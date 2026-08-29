@@ -107,16 +107,23 @@ def sync_bootstrap_data(supabase: Client):
     events = data.get("events", {}).get("data", []) or data.get("events", [])
     current_gw_id = 1
     if events and isinstance(events, list):
+        # Find active GW: first unfinished gameweek
+        unfinished = [e for e in events if not e.get("finished", False)]
+        if unfinished:
+            current_gw_id = unfinished[0]["id"]
+        else:
+            current_gw_id = events[-1]["id"]
+
         gw_records = []
         for e in events:
-            if e.get("is_current"):
-                current_gw_id = e["id"]
+            is_curr = (e["id"] == current_gw_id)
+            is_nxt = (e["id"] == current_gw_id + 1)
             gw_records.append({
                 "id": e["id"],
                 "name": e.get("name", f"Gameweek {e['id']}"),
                 "deadline_time": e.get("deadline_time"),
-                "is_current": e.get("is_current", False),
-                "is_next": e.get("is_next", False),
+                "is_current": is_curr,
+                "is_next": is_nxt,
                 "is_finished": e.get("finished", False)
             })
         supabase.table("dim_gameweeks").upsert(gw_records).execute()
@@ -202,59 +209,66 @@ def sync_league_managers(supabase: Client, league_id: str = DEFAULT_LEAGUE_ID):
         return entries
     return []
 
-def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Dict[str, Any]], current_gw: int = 25):
+def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Dict[str, Any]], current_gw: int = 2):
     """
-    Extracts manager picks and player performance stats for current gameweek.
+    Extracts manager picks and player performance stats for all gameweeks up to current_gw.
     """
-    logging.info(f"📊 Fetching Manager Picks and Live Performance Stats for GW {current_gw}...")
-    
-    # 1. Sync Manager Picks
-    all_picks = []
-    for entry in league_entries:
-        entry_id = entry.get("entry_id") or entry.get("id")
-        manager_id = entry["id"]
+    for gw in range(1, current_gw + 1):
+        logging.info(f"📊 Fetching Manager Picks and Performance Stats for GW {gw}...")
         
-        picks_data = fetch_json(f"/entry/{entry_id}/event/{current_gw}")
-        picks = picks_data.get("picks", [])
-        
-        for p in picks:
-            all_picks.append({
-                "manager_id": manager_id,
-                "gameweek_id": current_gw,
-                "player_id": p["element"],
-                "position": p["position"]
-            })
+        # 1. Sync Manager Picks for GW
+        all_picks = []
+        for entry in league_entries:
+            entry_id = entry.get("entry_id") or entry.get("id")
+            manager_id = entry["id"]
+            
+            try:
+                picks_data = fetch_json(f"/entry/{entry_id}/event/{gw}")
+                picks = picks_data.get("picks", [])
+                
+                for p in picks:
+                    all_picks.append({
+                        "manager_id": manager_id,
+                        "gameweek_id": gw,
+                        "player_id": p["element"],
+                        "position": p["position"]
+                    })
+            except Exception as err:
+                logging.warning(f"⚠️ Notice fetching picks for manager {manager_id} GW {gw}: {err}")
 
-    if all_picks:
-        supabase.table("fact_manager_picks").upsert(all_picks).execute()
-        logging.info(f"✅ Upserted {len(all_picks)} manager picks into 'fact_manager_picks'")
+        if all_picks:
+            supabase.table("fact_manager_picks").upsert(all_picks).execute()
+            logging.info(f"✅ Upserted {len(all_picks)} manager picks into 'fact_manager_picks' for GW {gw}")
 
-    # 2. Sync Player Performance Stats
-    live_data = fetch_json(f"/event/{current_gw}/live")
-    elements_stats = live_data.get("elements", {})
-    
-    perf_records = []
-    for elem_id, content in elements_stats.items():
-        stats = content.get("stats", {})
-        perf_records.append({
-            "player_id": int(elem_id),
-            "gameweek_id": current_gw,
-            "total_points": stats.get("total_points", 0),
-            "goals_scored": stats.get("goals_scored", 0),
-            "assists": stats.get("assists", 0),
-            "clean_sheets": stats.get("clean_sheets", 0),
-            "goals_conceded": stats.get("goals_conceded", 0),
-            "yellow_cards": stats.get("yellow_cards", 0),
-            "red_cards": stats.get("red_cards", 0),
-            "saves": stats.get("saves", 0),
-            "bonus": stats.get("bonus", 0),
-            "bps": stats.get("bps", 0),
-            "minutes": stats.get("minutes", 0)
-        })
+        # 2. Sync Player Performance Stats for GW
+        try:
+            live_data = fetch_json(f"/event/{gw}/live")
+            elements_stats = live_data.get("elements", {})
+            
+            perf_records = []
+            for elem_id, content in elements_stats.items():
+                stats = content.get("stats", {})
+                perf_records.append({
+                    "player_id": int(elem_id),
+                    "gameweek_id": gw,
+                    "total_points": stats.get("total_points", 0),
+                    "goals_scored": stats.get("goals_scored", 0),
+                    "assists": stats.get("assists", 0),
+                    "clean_sheets": stats.get("clean_sheets", 0),
+                    "goals_conceded": stats.get("goals_conceded", 0),
+                    "yellow_cards": stats.get("yellow_cards", 0),
+                    "red_cards": stats.get("red_cards", 0),
+                    "saves": stats.get("saves", 0),
+                    "bonus": stats.get("bonus", 0),
+                    "bps": stats.get("bps", 0),
+                    "minutes": stats.get("minutes", 0)
+                })
 
-    if perf_records:
-        supabase.table("fact_player_performance").upsert(perf_records).execute()
-        logging.info(f"✅ Upserted {len(perf_records)} player performance records into 'fact_player_performance'")
+            if perf_records:
+                supabase.table("fact_player_performance").upsert(perf_records).execute()
+                logging.info(f"✅ Upserted {len(perf_records)} player performance records for GW {gw}")
+        except Exception as err:
+            logging.warning(f"⚠️ Notice fetching live stats for GW {gw}: {err}")
 
 # ------------------------------------------------------------
 # Main Execution Entry Point
