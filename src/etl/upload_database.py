@@ -374,6 +374,86 @@ def upload_gold_layer():
     logging.info("✅ Gold layer upload complete")
 
 
+# --------------------------
+# PostgreSQL Database Upsert Functions (Star Schema)
+# --------------------------
+def upsert_dataframe_to_table(df: pd.DataFrame, table_name: str, on_conflict: str = None) -> bool:
+    """
+    Upsert a pandas DataFrame directly into a Supabase PostgreSQL table.
+    
+    Args:
+        df: Pandas DataFrame containing the data
+        table_name: Target Supabase Postgres table name
+        on_conflict: Column name(s) for handling unique constraint conflicts
+    """
+    if df.empty:
+        logging.info(f"ℹ️ DataFrame for '{table_name}' is empty. Skipping upsert.")
+        return True
+        
+    try:
+        supabase = get_supabase_client()
+        # Convert NaN values to None for clean JSON serialization
+        records = df.where(pd.notnull(df), None).to_dict(orient="records")
+        
+        logging.info(f"🔄 Upserting {len(records)} rows into PostgreSQL table '{table_name}'...")
+        
+        # Execute Supabase PostgREST upsert query
+        query = supabase.table(table_name).upsert(records)
+        if on_conflict:
+            query = query.on_conflict(on_conflict)
+            
+        res = query.execute()
+        logging.info(f"✅ Successfully upserted {len(records)} rows into '{table_name}'")
+        return True
+    except Exception as e:
+        logging.error(f"❌ Error upserting into table '{table_name}': {e}")
+        return False
+
+
+def sync_gold_layer_to_postgres():
+    """
+    Reads Gold Layer parquet files and syncs them into Supabase PostgreSQL Star Schema tables.
+    Executes in order of Foreign Key dependencies:
+    1. dim_clubs
+    2. dim_players
+    3. dim_managers
+    4. dim_gameweeks
+    5. dim_fixtures
+    6. fact_manager_picks
+    7. fact_player_performance
+    """
+    logging.info("🌟 Syncing Gold Layer data to PostgreSQL Star Schema tables...")
+    
+    gold_dir = config.GOLD_DIR
+    dims_dir = os.path.join(gold_dir, "dimensions")
+    facts_dir = os.path.join(gold_dir, "facts")
+    
+    table_mappings = [
+        # (local parquet path, target table name, primary key / conflict columns)
+        (os.path.join(dims_dir, "dim_clubs.parquet"), "dim_clubs", "id"),
+        (os.path.join(dims_dir, "dim_players.parquet"), "dim_players", "id"),
+        (os.path.join(dims_dir, "dim_managers.parquet"), "dim_managers", "id"),
+        (os.path.join(dims_dir, "dim_gameweeks.parquet"), "dim_gameweeks", "id"),
+        (os.path.join(dims_dir, "dim_fixtures.parquet"), "dim_fixtures", "id"),
+        (os.path.join(facts_dir, "fact_manager_picks.parquet"), "fact_manager_picks", "manager_id,gameweek_id,player_id"),
+        (os.path.join(facts_dir, "fact_player_performance.parquet"), "fact_player_performance", "player_id,gameweek_id"),
+    ]
+    
+    success_count = 0
+    for file_path, table_name, conflict_cols in table_mappings:
+        if os.path.exists(file_path):
+            try:
+                df = pd.read_parquet(file_path)
+                if upsert_dataframe_to_table(df, table_name, on_conflict=conflict_cols):
+                    success_count += 1
+            except Exception as e:
+                logging.warning(f"⚠️ Could not read or upload {file_path}: {e}")
+        else:
+            logging.info(f"ℹ️ Parquet file not found: {file_path}. Skipping '{table_name}'.")
+            
+    logging.info(f"✨ PostgreSQL Star Schema sync complete ({success_count}/{len(table_mappings)} tables updated)")
+
+
 def update_timestamp(layer: str = "all"):
     """Update last_updated timestamp file."""
     try:
@@ -423,7 +503,10 @@ def main(recent_gws_only: bool = True, num_gws: int = 2):
     # Upload each layer
     upload_bronze_layer(recent_gws_only=recent_gws_only, num_gws=num_gws)
     upload_silver_layer(recent_gws_only=recent_gws_only, num_gws=num_gws)
-    upload_gold_layer()  # Always upload all Gold files
+    upload_gold_layer()  # Always upload all Gold bucket files
+    
+    # Sync Gold Layer DataFrames to PostgreSQL Star Schema Tables
+    sync_gold_layer_to_postgres()
     
     # Update timestamp
     update_timestamp(layer="all")
