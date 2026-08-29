@@ -10,6 +10,7 @@ points, and league standings at database engine speed.
 
 import os
 import sys
+import time
 import json
 import logging
 import requests
@@ -273,35 +274,53 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
 # ------------------------------------------------------------
 # Main Execution Entry Point
 # ------------------------------------------------------------
-def main(full_sync: bool = False):
+def main(full_sync: bool = False, loop_interval: int = 0):
     logging.info("==================================================")
     logging.info(f"🚀 Modern ELT Sync (Mode: {'FULL METADATA' if full_sync else 'FAST LIVE SYNC'})")
     logging.info("==================================================")
 
     supabase = get_supabase_client()
-    
-    # 1. Sync Static Metadata only when requested or if tables are empty
-    if full_sync:
-        logging.info("📌 Full Sync Mode: Updating static metadata (Clubs, Players, Gameweeks)...")
-        current_gw_id = sync_bootstrap_data(supabase) or 1
-    else:
-        logging.info("⚡ Fast Live Mode: Skipping static club/player tables for sub-second execution...")
-        # Get active gameweek from dim_gameweeks
+
+    while True:
         try:
-            res = supabase.table("dim_gameweeks").select("id").eq("is_current", True).limit(1).execute()
-            current_gw_id = res.data[0]["id"] if res.data else 1
-        except Exception:
-            current_gw_id = 1
+            # 1. Sync Static Metadata only when requested or if tables are empty
+            if full_sync:
+                logging.info("📌 Full Sync Mode: Updating static metadata (Clubs, Players, Gameweeks)...")
+                current_gw_id = sync_bootstrap_data(supabase) or 1
+            else:
+                logging.info("⚡ Fast Live Mode: Skipping static club/player tables for sub-second execution...")
+                try:
+                    res = supabase.table("dim_gameweeks").select("id").eq("is_current", True).limit(1).execute()
+                    current_gw_id = res.data[0]["id"] if res.data else 1
+                except Exception:
+                    current_gw_id = 1
 
-    # 2. Sync Fixtures, Managers & Live Performance Stats
-    sync_fixtures(supabase)
-    entries = sync_league_managers(supabase)
-    
-    if entries:
-        sync_manager_picks_and_performance(supabase, entries, current_gw=current_gw_id)
+            # 2. Sync Fixtures, Managers & Live Performance Stats
+            sync_fixtures(supabase)
+            entries = sync_league_managers(supabase)
+            
+            if entries:
+                sync_manager_picks_and_performance(supabase, entries, current_gw=current_gw_id)
 
-    logging.info("✨ ELT Sync Complete! SQL Views (vw_draft_gameweek_overview) updated automatically.")
+            logging.info("✨ ELT Sync Complete! SQL Views (vw_draft_gameweek_overview) updated automatically.")
+
+        except Exception as e:
+            logging.error(f"❌ Error during sync cycle: {e}")
+
+        if loop_interval <= 0:
+            break
+
+        logging.info(f"⏱️ Sleeping for {loop_interval} seconds before next live auto-sync cycle...")
+        time.sleep(loop_interval)
 
 if __name__ == "__main__":
     is_full = "--full" in sys.argv
-    main(full_sync=is_full)
+    interval = 0
+    if "--loop" in sys.argv:
+        try:
+            idx = sys.argv.index("--loop")
+            interval = int(sys.argv[idx + 1]) if idx + 1 < len(sys.argv) else 60
+        except Exception:
+            interval = 60
+
+    main(full_sync=is_full, loop_interval=interval)
