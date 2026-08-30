@@ -241,16 +241,32 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
             supabase.table("fact_manager_picks").upsert(all_picks).execute()
             logging.info(f"✅ Upserted {len(all_picks)} manager picks into 'fact_manager_picks' for GW {gw}")
 
-        # 2. Sync Player Performance Stats for GW (Real-Time Regular FPL API)
+        # 2. Sync Player Performance Stats for GW (Real-Time Regular FPL API with Code Mapping)
         try:
+            # Build Code -> Draft ID and Reg ID -> Code translation maps
+            reg_id_to_code = {}
+            code_to_draft_id = {}
+            try:
+                r_reg_bs = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
+                if r_reg_bs.ok:
+                    reg_id_to_code = {p["id"]: p["code"] for p in r_reg_bs.json().get("elements", [])}
+
+                r_draft_bs = fetch_json("/bootstrap-static")
+                if r_draft_bs and "elements" in r_draft_bs:
+                    code_to_draft_id = {p["code"]: p["id"] for p in r_draft_bs.get("elements", [])}
+            except Exception as e_map:
+                logging.warning(f"⚠️ Notice building player code map: {e_map}")
+
             # Prefer Regular FPL API (fantasy.premierleague.com) for sub-second real-time live stats
             reg_url = f"https://fantasy.premierleague.com/api/event/{gw}/live/"
             elements_data = []
+            is_regular_api = False
             try:
                 r_reg = requests.get(reg_url, timeout=15)
                 if r_reg.ok:
                     res_json = r_reg.json()
                     elements_data = res_json.get("elements", [])
+                    is_regular_api = True
                     logging.info(f"⚡ Fetched {len(elements_data)} real-time stats from Regular FPL API for GW {gw}")
             except Exception as e_reg:
                 logging.warning(f"⚠️ Could not fetch real-time stats from Regular FPL API: {e_reg}")
@@ -275,9 +291,17 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
             
             perf_records = []
             for item in elements_data:
-                pid = item.get("id")
-                if not pid:
+                raw_id = item.get("id")
+                if not raw_id:
                     continue
+
+                # Translate Regular FPL ID to Draft FPL ID via player code
+                if is_regular_api and reg_id_to_code:
+                    p_code = reg_id_to_code.get(raw_id)
+                    pid = code_to_draft_id.get(p_code, raw_id) if p_code else raw_id
+                else:
+                    pid = raw_id
+
                 stats = item.get("stats", {})
                 cbi = stats.get("clearances_blocks_interceptions", 0)
                 tackles = stats.get("tackles", 0)
