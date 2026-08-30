@@ -241,10 +241,28 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
             supabase.table("fact_manager_picks").upsert(all_picks).execute()
             logging.info(f"✅ Upserted {len(all_picks)} manager picks into 'fact_manager_picks' for GW {gw}")
 
-        # 2. Sync Player Performance Stats for GW
+        # 2. Sync Player Performance Stats for GW (Real-Time Regular FPL API)
         try:
-            live_data = fetch_json(f"/event/{gw}/live")
-            elements_stats = live_data.get("elements", {})
+            # Prefer Regular FPL API (fantasy.premierleague.com) for sub-second real-time live stats
+            reg_url = f"https://fantasy.premierleague.com/api/event/{gw}/live/"
+            elements_data = []
+            try:
+                r_reg = requests.get(reg_url, timeout=15)
+                if r_reg.ok:
+                    res_json = r_reg.json()
+                    elements_data = res_json.get("elements", [])
+                    logging.info(f"⚡ Fetched {len(elements_data)} real-time stats from Regular FPL API for GW {gw}")
+            except Exception as e_reg:
+                logging.warning(f"⚠️ Could not fetch real-time stats from Regular FPL API: {e_reg}")
+
+            # Fallback to Draft FPL API if needed
+            if not elements_data:
+                live_data = fetch_json(f"/event/{gw}/live")
+                raw_elems = live_data.get("elements", {})
+                if isinstance(raw_elems, dict):
+                    elements_data = [{"id": int(k), **v} for k, v in raw_elems.items()]
+                elif isinstance(raw_elems, list):
+                    elements_data = raw_elems
 
             # Fetch player position map from dim_players to distinguish DEF (2) vs MID (3)
             pos_map = {}
@@ -256,9 +274,11 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
                 pass
             
             perf_records = []
-            for elem_id, content in elements_stats.items():
-                pid = int(elem_id)
-                stats = content.get("stats", {})
+            for item in elements_data:
+                pid = item.get("id")
+                if not pid:
+                    continue
+                stats = item.get("stats", {})
                 cbi = stats.get("clearances_blocks_interceptions", 0)
                 tackles = stats.get("tackles", 0)
                 recoveries = stats.get("recoveries", 0)
@@ -292,7 +312,7 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
 
             if perf_records:
                 supabase.table("fact_player_performance").upsert(perf_records).execute()
-                logging.info(f"✅ Upserted {len(perf_records)} player performance records for GW {gw}")
+                logging.info(f"✅ Upserted {len(perf_records)} real-time player performance records for GW {gw}")
         except Exception as err:
             logging.warning(f"⚠️ Notice fetching live stats for GW {gw}: {err}")
 
