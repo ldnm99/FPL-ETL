@@ -9,9 +9,9 @@ on:
   # Manual trigger from GitHub UI
   workflow_dispatch:
   
-  # Scheduled runs (every gameweek - Saturdays at 2 AM UTC)
+  # Scheduled runs (Every 15 minutes for live matchday sync)
   schedule:
-    - cron: '0 2 * * 6'  # Every Saturday at 2 AM UTC
+    - cron: '*/15 * * * *'
   
   # External API triggers
   repository_dispatch:
@@ -50,6 +50,10 @@ jobs:
             echo "⚠️ requirements.lock not found — falling back to requirements.txt (non-reproducible)"
             pip install -r requirements.txt
           fi
+
+      - name: Sync FPL Draft Live Data directly to Supabase SQL
+        run: |
+          python src/etl/sync_fpl_draft_to_supabase.py --full
 
       - name: Run Medallion ETL Pipeline
         run: |
