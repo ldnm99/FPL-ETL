@@ -9,9 +9,9 @@ on:
   # Manual trigger from GitHub UI
   workflow_dispatch:
   
-  # Scheduled runs (Every 15 minutes for live matchday sync)
+  # Scheduled runs (Offset minutes 4,19,34,49 to bypass global GitHub queue congestion)
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '4,19,34,49 * * * *'
   
   # External API triggers
   repository_dispatch:
