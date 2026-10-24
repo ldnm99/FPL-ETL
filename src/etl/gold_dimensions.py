@@ -115,9 +115,22 @@ def create_dim_players() -> pd.DataFrame:
     df['valid_to'] = None
     df['is_current'] = True
     
+    # Ensure canonical photo property exists for official Premier League CDN headshots
+    if 'code' in df.columns:
+        if 'photo' not in df.columns or df['photo'].isna().all():
+            df['photo'] = df['code'].dropna().astype(int).astype(str) + '.jpg'
+        df['photo_code'] = df['code'].dropna().astype(int).astype(str)
+    
     # Save to Gold dimensions (preserve ALL columns)
     output_path = config.GOLD_DIR + '/dimensions/dim_players.parquet'
     df.to_parquet(output_path, index=False, engine='pyarrow')
+    
+    # Export local JSON snapshot for offline/fallback ingestion
+    snapshot_path = config.GOLD_DIR + '/dimensions/dim_players_snapshot.json'
+    try:
+        df[['player_id', 'name', 'photo', 'code', 'team']].head(100).to_json(snapshot_path, orient='records', indent=2)
+    except Exception as e:
+        logging.warning(f"Could not export JSON snapshot: {e}")
     
     logging.info(f"✅ dim_players created: {len(df)} players with {len(df.columns)} columns")
     return df

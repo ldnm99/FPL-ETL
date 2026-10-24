@@ -78,3 +78,28 @@ class GameweekLiveStats(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     elements: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+
+class PlayerDimensionRaw(BaseModel):
+    """
+    Validated model for dim_players dimension ingestion contract.
+    Ensures canonical photo code mapping for official Premier League headshots.
+    """
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    player_id: int
+    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    code: Optional[int] = None
+    photo: Optional[str] = None
+    team_id: Optional[int] = None
+    team: Optional[str] = None
+    position: Optional[str] = None
+
+    @model_validator(mode="after")
+    def resolve_photo_code(self) -> "PlayerDimensionRaw":
+        """Ensure photo has a valid format (e.g. 154561.jpg or p154561.png)."""
+        if not self.photo and self.code:
+            self.photo = f"{self.code}.jpg"
+        return self
