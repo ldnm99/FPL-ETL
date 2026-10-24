@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS fact_player_performance (
     yellow_cards INT DEFAULT 0,
     red_cards INT DEFAULT 0,
     saves INT DEFAULT 0,
+    defcons INT DEFAULT 0,
     bonus INT DEFAULT 0,
     bps INT DEFAULT 0,
     minutes INT DEFAULT 0,
