@@ -424,8 +424,9 @@ def main(full_sync: bool = False, loop_interval: int = 0):
 
 if __name__ == "__main__":
     is_full = "--full" in sys.argv
+    is_once = "--once" in sys.argv
     interval = 0
-    if "--loop" in sys.argv:
+    if "--loop" in sys.argv and not is_once:
         try:
             idx = sys.argv.index("--loop")
             interval = int(sys.argv[idx + 1]) if idx + 1 < len(sys.argv) else 60

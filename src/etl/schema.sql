@@ -226,3 +226,20 @@ ALTER TABLE gold_waiver_recommendations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public read access on gold_waiver_recommendations" ON gold_waiver_recommendations;
 CREATE POLICY "Allow public read access on gold_waiver_recommendations" ON gold_waiver_recommendations FOR SELECT USING (true);
 
+-- Manager Gameweek Lineup & Efficiency Facts
+CREATE TABLE IF NOT EXISTS fact_manager_lineup_gw (
+    manager_id INT NOT NULL,
+    gameweek_id INT NOT NULL,
+    starter_points INT DEFAULT 0,
+    bench_points INT DEFAULT 0,
+    optimal_xi_score INT DEFAULT 0,
+    points_wasted_on_bench INT DEFAULT 0,
+    tactical_efficiency_pct NUMERIC(5,2) DEFAULT 0.0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (manager_id, gameweek_id)
+);
+
+ALTER TABLE fact_manager_lineup_gw ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on fact_manager_lineup_gw" ON fact_manager_lineup_gw;
+CREATE POLICY "Allow public read access on fact_manager_lineup_gw" ON fact_manager_lineup_gw FOR SELECT USING (true);
+

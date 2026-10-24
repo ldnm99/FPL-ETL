@@ -1,0 +1,47 @@
+name: FPL Matchday Serverless Sync Daemon (Zero-Cost)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Premier League Matchday windows (UTC):
+    # 1. Weekend Match Days (Saturday & Sunday 12:00 - 21:00 UTC) every 5 minutes
+    - cron: '*/5 12-21 * * 0,6'
+    # 2. Midweek & Friday Night Football (Tuesday, Wednesday, Friday 18:00 - 22:00 UTC)
+    - cron: '*/10 18-22 * * 2,3,5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fpl-matchday-sync
+  cancel-in-progress: false
+
+jobs:
+  matchday_sync:
+    name: Execute Matchday Live Sync & Heartbeat
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_KEY }}
+      FPL_LEAGUE_ID: ${{ secrets.FPL_LEAGUE_ID || '38279' }}
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Live FPL Sync & Emit Heartbeat
+        run: |
+          python src/etl/sync_fpl_draft_to_supabase.py --once

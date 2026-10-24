@@ -5,6 +5,7 @@ Create fact tables for star schema.
 import logging
 import pandas as pd
 import os
+from typing import Optional, List, Dict, Any
 from src.config import config
 from src.etl import gold_seasonal_stats
 
@@ -362,6 +363,116 @@ def create_manager_gameweek_performance() -> pd.DataFrame:
     return mgr_performance
 
 
+def solve_optimal_xi(players: List[Dict[str, Any]]) -> int:
+    """
+    Evaluates valid football formations (1 GKP, 3-5 DEF, 2-5 MID, 1-3 FWD, sum=11)
+    and returns the maximum starting XI score achievable from the 15-player squad.
+    """
+    gkps = sorted([p for p in players if p.get("position_name") == "GKP"], key=lambda x: x.get("points", 0), reverse=True)
+    defs = sorted([p for p in players if p.get("position_name") == "DEF"], key=lambda x: x.get("points", 0), reverse=True)
+    mids = sorted([p for p in players if p.get("position_name") == "MID"], key=lambda x: x.get("points", 0), reverse=True)
+    fwds = sorted([p for p in players if p.get("position_name") == "FWD"], key=lambda x: x.get("points", 0), reverse=True)
+
+    if not gkps or len(players) < 11:
+        return sum(p.get("points", 0) for p in players[:11])
+
+    best_score = 0
+    gkp_pts = gkps[0].get("points", 0)
+
+    # Standard valid FPL formations (DEF, MID, FWD)
+    formations = [
+        (3, 5, 2), (3, 4, 3), (4, 4, 2), (4, 3, 3),
+        (4, 5, 1), (5, 3, 2), (5, 4, 1), (5, 2, 3)
+    ]
+
+    for d_count, m_count, f_count in formations:
+        if len(defs) >= d_count and len(mids) >= m_count and len(fwds) >= f_count:
+            score = gkp_pts + \
+                    sum(p.get("points", 0) for p in defs[:d_count]) + \
+                    sum(p.get("points", 0) for p in mids[:m_count]) + \
+                    sum(p.get("points", 0) for p in fwds[:f_count])
+            if score > best_score:
+                best_score = score
+
+    return best_score if best_score > 0 else sum(p.get("points", 0) for p in players[:11])
+
+
+def materialize_manager_gameweek_facts(target_gw: Optional[int] = None) -> pd.DataFrame:
+    """
+    Materializes fact_manager_lineup_gw for closed historical gameweeks.
+    Computes starter points, bench points, optimal XI score, points wasted on bench,
+    and tactical efficiency percentage.
+    Saves to parquet and attempts Supabase upsert.
+    """
+    logging.info("🔄 Materializing fact_manager_lineup_gw...")
+    
+    mgr_perf_path = os.path.join(config.GOLD_DIR, 'facts', 'manager_gameweek_performance.parquet')
+    if not os.path.exists(mgr_perf_path):
+        logging.warning("⚠️ manager_gameweek_performance.parquet not found. Creating first...")
+        create_manager_gameweek_performance()
+
+    if not os.path.exists(mgr_perf_path):
+        return pd.DataFrame()
+
+    df = pd.read_parquet(mgr_perf_path)
+    if df.empty or 'manager_id' not in df.columns:
+        return pd.DataFrame()
+
+    if target_gw is not None:
+        df = df[df['gameweek_num'] == target_gw]
+
+    records = []
+    grouped = df.groupby(['manager_id', 'gameweek_num'])
+    for (mgr_id, gw_num), group in grouped:
+        starters = group[group['team_position'] <= 11]
+        bench = group[group['team_position'] > 11]
+
+        starter_pts = int(starters['gw_points'].fillna(0).sum())
+        bench_pts = int(bench['gw_points'].fillna(0).sum())
+
+        squad_players = []
+        for _, row in group.iterrows():
+            squad_players.append({
+                "player_id": row.get("player_id"),
+                "position_name": row.get("player_position", "MID"),
+                "points": int(row.get("gw_points") or 0)
+            })
+
+        optimal_score = solve_optimal_xi(squad_players)
+        wasted_pts = max(0, optimal_score - starter_pts)
+        efficiency = round((starter_pts / optimal_score) * 100.0, 2) if optimal_score > 0 else 100.0
+
+        records.append({
+            "manager_id": int(mgr_id),
+            "gameweek_id": int(gw_num),
+            "starter_points": starter_pts,
+            "bench_points": bench_pts,
+            "optimal_xi_score": optimal_score,
+            "points_wasted_on_bench": wasted_pts,
+            "tactical_efficiency_pct": efficiency
+        })
+
+    fact_lineup_df = pd.DataFrame(records)
+    if not fact_lineup_df.empty:
+        out_dir = os.path.join(config.GOLD_DIR, 'facts')
+        os.makedirs(out_dir, exist_ok=True)
+        out_file = os.path.join(out_dir, 'fact_manager_lineup_gw.parquet')
+        fact_lineup_df.to_parquet(out_file, index=False, engine='pyarrow')
+        logging.info(f"✅ fact_manager_lineup_gw saved locally: {len(fact_lineup_df)} records")
+
+        # Optional Supabase upsert
+        try:
+            from src.etl.waiver_advisor import get_client
+            supabase = get_client()
+            if supabase:
+                supabase.table("fact_manager_lineup_gw").upsert(fact_lineup_df.to_dict(orient="records")).execute()
+                logging.info(f"✅ Upserted {len(fact_lineup_df)} records to Supabase 'fact_manager_lineup_gw'")
+        except Exception as e:
+            logging.info(f"ℹ️ Notice on Supabase upsert for fact_manager_lineup_gw: {e}")
+
+    return fact_lineup_df
+
+
 def main():
     """Create all fact tables."""
     logging.info("📊 Creating dimensional model - Facts...")
@@ -375,6 +486,7 @@ def main():
     gold_seasonal_stats.create_fact_player_seasonal_stats()
 
     create_manager_gameweek_performance()
+    materialize_manager_gameweek_facts()
 
     logging.info("🎉 All facts created!")
 
