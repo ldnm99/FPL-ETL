@@ -339,7 +339,8 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
                     "own_goals": stats.get("own_goals", 0),
                     "penalties_saved": stats.get("penalties_saved", 0),
                     "penalties_missed": stats.get("penalties_missed", 0),
-                    "saves": defcons_val,
+                    "saves": stats.get("saves", 0),
+                    "defcons": defcons_val,
                     "bonus": stats.get("bonus", 0),
                     "bps": stats.get("bps", 0),
                     "minutes": stats.get("minutes", 0)
