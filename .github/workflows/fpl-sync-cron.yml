@@ -1,0 +1,47 @@
+name: FPL Zero-Cost Adaptive Sync Cron
+
+on:
+  workflow_dispatch:
+  # Premier League Matchday Scheduled Runs (UTC)
+  schedule:
+    # 1. Saturday Match Window (11:00 - 21:00 UTC) every 15 mins
+    - cron: '*/15 11-21 * * 6'
+    # 2. Sunday Match Window (12:00 - 20:00 UTC) every 15 mins
+    - cron: '*/15 12-20 * * 0'
+    # 3. Midweek European / PL evening fixtures (Tue, Wed, Thu 18:00 - 22:00 UTC)
+    - cron: '*/15 18-22 * * 2,3,4'
+    # 4. Friday & Monday Night Football (19:00 - 22:00 UTC)
+    - cron: '*/15 19-22 * * 1,5'
+    # 5. Off-matchday daily morning baseline health check (06:00 UTC)
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  sync_live_fpl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_KEY }}
+      FPL_LEAGUE_ID: ${{ secrets.FPL_LEAGUE_ID || '38279' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Execute Fast Adaptive Live Sync
+        run: |
+          python src/etl/sync_fpl_draft_to_supabase.py

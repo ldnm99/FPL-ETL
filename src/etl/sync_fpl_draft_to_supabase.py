@@ -340,6 +340,19 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
         except Exception as err:
             logging.warning(f"⚠️ Notice fetching live stats for GW {gw}: {err}")
 
+def is_fixture_window_active(supabase: Client) -> bool:
+    """
+    Detect if any Premier League match is currently live (started=true and finished=false).
+    Enables adaptive polling: fast 60s during matches, 30m eco-mode outside matchdays.
+    """
+    try:
+        res = supabase.table("dim_fixtures").select("id, started, finished").eq("started", True).eq("finished", False).execute()
+        return bool(res.data and len(res.data) > 0)
+    except Exception as err:
+        logging.warning(f"⚠️ Error checking active fixture window: {err}")
+        return False
+
+
 # ------------------------------------------------------------
 # Main Execution Entry Point
 # ------------------------------------------------------------
@@ -379,8 +392,12 @@ def main(full_sync: bool = False, loop_interval: int = 0):
         if loop_interval <= 0:
             break
 
-        logging.info(f"⏱️ Sleeping for {loop_interval} seconds before next live auto-sync cycle...")
-        time.sleep(loop_interval)
+        # Adaptive Polling: 60s when matches are live, 30 min (1800s) eco-mode when idle
+        active_fixtures = is_fixture_window_active(supabase)
+        sleep_duration = loop_interval if active_fixtures else max(loop_interval, 1800)
+        mode_label = "⚽ LIVE MATCHES ONGOING (60s loop)" if active_fixtures else "🌙 ECO MODE: No live matches active (30m loop)"
+        logging.info(f"⏱️ {mode_label} -> Sleeping for {sleep_duration} seconds...")
+        time.sleep(sleep_duration)
 
 if __name__ == "__main__":
     is_full = "--full" in sys.argv

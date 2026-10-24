@@ -8,6 +8,7 @@ import os
 import pandas as pd
 from typing import Dict, Any, List
 from src.config import config
+from src.etl.schemas import PlayerPerformanceRaw
 
 
 def load_bronze_json(file_path: str) -> Dict[Any, Any]:
@@ -165,45 +166,56 @@ def transform_gameweek_data(gameweek: int, manager_ids: List[int]) -> pd.DataFra
         for player_id, player_data in elements.items():
             # Get stats object (has ALL the gameweek stats)
             stats = player_data.get('stats', {})
+
+            try:
+                # Pydantic v2 validation enforcing data contracts & Lesson 18 invariant
+                validated = PlayerPerformanceRaw.model_validate({
+                    'player_id': int(player_id),
+                    **stats
+                })
+            except Exception as err:
+                logging.warning(f"⚠️ Validation error for player ID {player_id}: {err}")
+                continue
             
-            # Extract ALL available stats
+            # Extract validated stats
             gw_stats.append({
-                'ID': int(player_id),
+                'ID': validated.player_id,
                 'gameweek': gameweek,
                 # Basic performance
-                'gw_points': stats.get('total_points', 0),
-                'gw_minutes': stats.get('minutes', 0),
-                'gw_goals': stats.get('goals_scored', 0),
-                'gw_assists': stats.get('assists', 0),
-                'gw_clean_sheets': stats.get('clean_sheets', 0),
-                'gw_goals_conceded': stats.get('goals_conceded', 0),
-                'gw_bonus': stats.get('bonus', 0),
-                'gw_bps': stats.get('bps', 0),
+                'gw_points': validated.points,
+                'gw_minutes': validated.minutes,
+                'gw_goals': validated.goals_scored,
+                'gw_assists': validated.assists,
+                'gw_clean_sheets': validated.clean_sheets,
+                'gw_goals_conceded': validated.goals_conceded,
+                'gw_bonus': validated.bonus,
+                'gw_bps': validated.bps,
                 # Defensive stats
-                'gw_saves': stats.get('saves', 0),
-                'gw_penalties_saved': stats.get('penalties_saved', 0),
-                'gw_yellow_cards': stats.get('yellow_cards', 0),
-                'gw_red_cards': stats.get('red_cards', 0),
-                'gw_own_goals': stats.get('own_goals', 0),
-                'gw_penalties_missed': stats.get('penalties_missed', 0),
+                'gw_saves': validated.saves,
+                'gw_penalties_saved': validated.penalties_saved,
+                'gw_yellow_cards': validated.yellow_cards,
+                'gw_red_cards': validated.red_cards,
+                'gw_own_goals': validated.own_goals,
+                'gw_penalties_missed': validated.penalties_missed,
                 # Advanced stats (ICT)
-                'gw_influence': stats.get('influence', 0.0),
-                'gw_creativity': stats.get('creativity', 0.0),
-                'gw_threat': stats.get('threat', 0.0),
-                'gw_ict_index': stats.get('ict_index', 0.0),
+                'gw_influence': validated.influence,
+                'gw_creativity': validated.creativity,
+                'gw_threat': validated.threat,
+                'gw_ict_index': validated.ict_index,
                 # Expected stats (xG, xA)
-                'gw_expected_goals': stats.get('expected_goals', 0.0),
-                'gw_expected_assists': stats.get('expected_assists', 0.0),
-                'gw_expected_goal_involvements': stats.get('expected_goal_involvements', 0.0),
-                'gw_expected_goals_conceded': stats.get('expected_goals_conceded', 0.0),
+                'gw_expected_goals': validated.expected_goals,
+                'gw_expected_assists': validated.expected_assists,
+                'gw_expected_goal_involvements': validated.expected_goal_involvements,
+                'gw_expected_goals_conceded': validated.expected_goals_conceded,
                 # Defensive contribution
-                'gw_clearances_blocks_interceptions': stats.get('clearances_blocks_interceptions', 0),
-                'gw_recoveries': stats.get('recoveries', 0),
-                'gw_tackles': stats.get('tackles', 0),
-                'gw_defensive_contribution': stats.get('defensive_contribution', 0),
+                'gw_clearances_blocks_interceptions': validated.clearances_blocks_interceptions,
+                'gw_recoveries': validated.recoveries,
+                'gw_tackles': validated.tackles,
+                'gw_defensive_contribution': validated.defensive_contribution,
                 # Other
-                'gw_starts': stats.get('starts', 0),
-                'gw_in_dreamteam': stats.get('in_dreamteam', False),
+                'gw_starts': validated.starts,
+                'gw_in_dreamteam': validated.in_dreamteam,
+                'gw_has_played': validated.has_played,
             })
     else:
         # List format (legacy - shouldn't happen but keep for safety)
