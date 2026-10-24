@@ -78,16 +78,26 @@ def calculate_waiver_recommendations(supabase: Optional[Client] = None) -> List[
 
         # 4. Fetch Upcoming Fixtures (Next 3 GWs) for FDR calculation
         next_gws = [current_gw + 1, current_gw + 2, current_gw + 3]
-        fixtures_res = supabase.table("dim_fixtures").select("gameweek_id, team_h, team_a, fdr_h, fdr_a").in_("gameweek_id", next_gws).execute()
+        fixtures_res = supabase.table("dim_fixtures").select("gameweek_id, team_h, team_a, fdr_h, fdr_a").in_("gameweek_id", next_gws).order("gameweek_id").execute()
         fixtures = fixtures_res.data or []
 
-        # Map club_id -> list of FDRs for upcoming 3 games
-        club_fdr_map: Dict[int, List[int]] = {}
+        # Map club_id -> list of upcoming 3 fixtures with opponent, venue, and FDR
+        club_fixtures_map: Dict[int, List[Dict[str, Any]]] = {}
         for f in fixtures:
             # Home team
-            club_fdr_map.setdefault(f["team_h"], []).append(f.get("fdr_h", 3))
+            club_fixtures_map.setdefault(f["team_h"], []).append({
+                "gw": f["gameweek_id"],
+                "opponent": club_map.get(f["team_a"], "PL"),
+                "fdr": f.get("fdr_h", 3),
+                "is_home": True
+            })
             # Away team
-            club_fdr_map.setdefault(f["team_a"], []).append(f.get("fdr_a", 3))
+            club_fixtures_map.setdefault(f["team_a"], []).append({
+                "gw": f["gameweek_id"],
+                "opponent": club_map.get(f["team_h"], "PL"),
+                "fdr": f.get("fdr_a", 3),
+                "is_home": False
+            })
 
         # 5. Fetch Recent Performance (Last 3 GWs) from fact_player_performance
         recent_gws = [max(1, current_gw - 2), max(1, current_gw - 1), current_gw]
@@ -114,7 +124,8 @@ def calculate_waiver_recommendations(supabase: Optional[Client] = None) -> List[
             stats = perf_by_player.get(pid, {"points": 0, "minutes": 0, "goals": 0, "assists": 0, "saves": 0})
             
             # Upcoming FDR ease factor (lower FDR = easier games)
-            upcoming_fdrs = club_fdr_map.get(club_id, [3, 3, 3])[:3]
+            upcoming_fixtures = club_fixtures_map.get(club_id, [])[:3]
+            upcoming_fdrs = [fix["fdr"] for fix in upcoming_fixtures] if upcoming_fixtures else [3, 3, 3]
             avg_fdr = sum(upcoming_fdrs) / len(upcoming_fdrs) if upcoming_fdrs else 3.0
             
             # Schedule ease multiplier: 2.0 FDR gives 1.18x boost, 4.0 FDR gives 0.94x
@@ -139,6 +150,7 @@ def calculate_waiver_recommendations(supabase: Optional[Client] = None) -> List[
                 "recent_minutes": mins,
                 "pts_per_90": pts_per_90,
                 "avg_upcoming_fdr": round(avg_fdr, 1),
+                "upcoming_fixtures": upcoming_fixtures,
                 "sleeper_score": sleeper_score,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -150,14 +162,19 @@ def calculate_waiver_recommendations(supabase: Optional[Client] = None) -> List[
             pos_players.sort(key=lambda x: x["sleeper_score"], reverse=True)
             top_recommendations.extend(pos_players[:5])
 
-        # 8. Save local gold snapshot for offline resilience
+        # 8. Save local gold snapshot for offline resilience (both ETL and Web frontend)
         try:
-            gold_dir = os.path.join(os.path.dirname(__file__), "..", "..", "Data", "gold")
-            os.makedirs(gold_dir, exist_ok=True)
-            gold_file = os.path.join(gold_dir, "gold_waiver_recommendations.json")
-            with open(gold_file, "w", encoding="utf-8") as f:
-                json.dump(top_recommendations, f, indent=2)
-            logging.info(f"💾 Saved local gold snapshot: {gold_file}")
+            gold_dirs = [
+                os.path.join(os.path.dirname(__file__), "..", "..", "Data", "gold"),
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "FPL_web", "src", "data")),
+            ]
+            for gdir in gold_dirs:
+                if os.path.exists(os.path.dirname(gdir)):
+                    os.makedirs(gdir, exist_ok=True)
+                    gold_file = os.path.join(gdir, "gold_waiver_recommendations.json")
+                    with open(gold_file, "w", encoding="utf-8") as f:
+                        json.dump(top_recommendations, f, indent=2)
+                    logging.info(f"💾 Saved local gold snapshot: {gold_file}")
         except Exception as e:
             logging.warning(f"⚠️ Could not write local gold file: {e}")
 
@@ -166,7 +183,7 @@ def calculate_waiver_recommendations(supabase: Optional[Client] = None) -> List[
             supabase.table("gold_waiver_recommendations").upsert(top_recommendations).execute()
             logging.info(f"✅ Upserted {len(top_recommendations)} top recommendations to 'gold_waiver_recommendations'")
         except Exception as e:
-            logging.warning(f"⚠️ Notice upserting to Supabase table (table schema may be pending): {e}")
+            logging.warning(f"⚠️ Notice upserting to Supabase table: {e}")
 
         return top_recommendations
 
