@@ -132,20 +132,25 @@ def sync_bootstrap_data(supabase: Client):
         
     return current_gw_id
 
-def sync_fixtures(supabase: Client):
+def sync_fixtures(supabase: Client, current_gw: int = None, refresh_all: bool = False):
     """
     Extracts match fixtures JSON from official FPL API and upserts dim_fixtures.
+    Captures live status: started, finished, finished_provisional, minutes.
     """
-    logging.info("📅 Fetching Premier League Fixtures...")
-    
-    fixtures_url = "https://fantasy.premierleague.com/api/fixtures/"
+    if refresh_all or not current_gw:
+        logging.info("📅 Fetching Full Season Premier League Fixtures (380 Matches)...")
+        fixtures_url = "https://fantasy.premierleague.com/api/fixtures/"
+    else:
+        logging.info(f"📅 Fetching Live Fixtures for Gameweek {current_gw}...")
+        fixtures_url = f"https://fantasy.premierleague.com/api/fixtures/?event={current_gw}"
+
     try:
         res = requests.get(fixtures_url, timeout=15)
         res.raise_for_status()
         fixtures_data = res.json()
     except Exception as e:
         logging.warning(f"⚠️ Could not fetch fixtures from main API: {e}")
-        fixtures_data = fetch_json("/fixtures")
+        fixtures_data = fetch_json(f"/fixtures?event={current_gw}" if current_gw else "/fixtures")
 
     if not fixtures_data or not isinstance(fixtures_data, list):
         logging.warning("⚠️ Could not fetch fixtures data.")
@@ -163,7 +168,10 @@ def sync_fixtures(supabase: Client):
             "fdr_h": f.get("team_h_difficulty"),
             "fdr_a": f.get("team_a_difficulty"),
             "kickoff_time": f.get("kickoff_time"),
-            "finished": f.get("finished", False)
+            "started": f.get("started", False),
+            "finished": f.get("finished", False),
+            "finished_provisional": f.get("finished_provisional", False),
+            "minutes": f.get("minutes", 0),
         })
 
     if fixture_records:
@@ -362,11 +370,19 @@ def update_sync_heartbeat(supabase: Client, status: str = "ok", current_gw: int 
 
 def is_fixture_window_active(supabase: Client) -> bool:
     """
-    Detect if any Premier League match is currently live (started=true and finished=false).
+    Detect if any Premier League match is currently live:
+    started == True and finished == False and finished_provisional == False.
     Enables adaptive polling: fast 60s during matches, 30m eco-mode outside matchdays.
     """
     try:
-        res = supabase.table("dim_fixtures").select("id, started, finished").eq("started", True).eq("finished", False).execute()
+        res = (
+            supabase.table("dim_fixtures")
+            .select("id, started, finished, finished_provisional")
+            .eq("started", True)
+            .eq("finished", False)
+            .eq("finished_provisional", False)
+            .execute()
+        )
         return bool(res.data and len(res.data) > 0)
     except Exception as err:
         logging.warning(f"⚠️ Error checking active fixture window: {err}")
@@ -398,7 +414,7 @@ def main(full_sync: bool = False, loop_interval: int = 0):
                     current_gw_id = 1
 
             # 2. Sync Fixtures, Managers & Live Performance Stats
-            sync_fixtures(supabase)
+            sync_fixtures(supabase, current_gw=current_gw_id, refresh_all=full_sync)
             entries = sync_league_managers(supabase)
             
             if entries:
@@ -423,6 +439,13 @@ def main(full_sync: bool = False, loop_interval: int = 0):
         time.sleep(sleep_duration)
 
 if __name__ == "__main__":
+    if "--refresh-season-fixtures" in sys.argv:
+        logging.info("📅 Initiating Monthly Full Season Fixtures Calendar Sync (380 Matches)...")
+        sb_client = get_supabase_client()
+        sync_fixtures(sb_client, refresh_all=True)
+        logging.info("✅ Full Season Fixtures Calendar Synchronized successfully.")
+        sys.exit(0)
+
     is_full = "--full" in sys.argv
     is_once = "--once" in sys.argv
     interval = 0
