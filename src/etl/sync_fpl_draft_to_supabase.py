@@ -340,6 +340,26 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
         except Exception as err:
             logging.warning(f"⚠️ Notice fetching live stats for GW {gw}: {err}")
 
+def update_sync_heartbeat(supabase: Client, status: str = "ok", current_gw: int = 1):
+    """
+    Writes a heartbeat timestamp into 'sync_status' in Supabase.
+    Tracks pipeline freshness and provides telemetry to frontend.
+    """
+    try:
+        from datetime import datetime, timezone
+        record = {
+            "id": 1,
+            "last_synced_at": datetime.now(timezone.utc).isoformat(),
+            "status": status,
+            "current_gameweek": current_gw,
+            "is_fixture_active": is_fixture_window_active(supabase),
+        }
+        supabase.table("sync_status").upsert(record).execute()
+        logging.info("💓 Pipeline heartbeat updated in 'sync_status'")
+    except Exception as err:
+        logging.warning(f"⚠️ Heartbeat write notice (sync_status table may be pending): {err}")
+
+
 def is_fixture_window_active(supabase: Client) -> bool:
     """
     Detect if any Premier League match is currently live (started=true and finished=false).
@@ -383,6 +403,9 @@ def main(full_sync: bool = False, loop_interval: int = 0):
             
             if entries:
                 sync_manager_picks_and_performance(supabase, entries, current_gw=current_gw_id)
+
+            # 3. Update Pipeline Telemetry Heartbeat
+            update_sync_heartbeat(supabase, status="ok", current_gw=current_gw_id)
 
             logging.info("✨ ELT Sync Complete! SQL Views (vw_draft_gameweek_overview) updated automatically.")
 

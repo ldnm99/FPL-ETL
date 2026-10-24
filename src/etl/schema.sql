@@ -193,3 +193,36 @@ CREATE POLICY "Allow public read access on dim_fixtures" ON dim_fixtures FOR SEL
 CREATE POLICY "Allow public read access on fact_manager_picks" ON fact_manager_picks FOR SELECT USING (true);
 CREATE POLICY "Allow public read access on fact_player_performance" ON fact_player_performance FOR SELECT USING (true);
 CREATE POLICY "Allow public read access on fact_draft_transactions" ON fact_draft_transactions FOR SELECT USING (true);
+
+-- Pipeline Heartbeat & Telemetry Status
+CREATE TABLE IF NOT EXISTS sync_status (
+    id INT PRIMARY KEY DEFAULT 1,
+    last_synced_at TIMESTAMPTZ DEFAULT NOW(),
+    status VARCHAR(50) DEFAULT 'ok',
+    current_gameweek INT DEFAULT 1,
+    is_fixture_active BOOLEAN DEFAULT FALSE,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE sync_status ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on sync_status" ON sync_status;
+CREATE POLICY "Allow public read access on sync_status" ON sync_status FOR SELECT USING (true);
+
+-- Waiver Wire Sleeper Recommendations
+CREATE TABLE IF NOT EXISTS gold_waiver_recommendations (
+    player_id INT PRIMARY KEY,
+    web_name VARCHAR(100) NOT NULL,
+    position_name VARCHAR(10) NOT NULL,
+    club_short VARCHAR(10),
+    recent_points INT DEFAULT 0,
+    recent_minutes INT DEFAULT 0,
+    pts_per_90 NUMERIC(6,2) DEFAULT 0.0,
+    avg_upcoming_fdr NUMERIC(3,1) DEFAULT 3.0,
+    sleeper_score NUMERIC(6,2) DEFAULT 0.0,
+    generated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE gold_waiver_recommendations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on gold_waiver_recommendations" ON gold_waiver_recommendations;
+CREATE POLICY "Allow public read access on gold_waiver_recommendations" ON gold_waiver_recommendations FOR SELECT USING (true);
+
