@@ -9,9 +9,10 @@ on:
   # Manual trigger from GitHub UI
   workflow_dispatch:
   
-  # Scheduled runs (Offset minutes 4,19,34,49 to bypass global GitHub queue congestion)
-  schedule:
-    - cron: '4,19,34,49 * * * *'
+  # Scheduled runs disabled to preserve GitHub Actions free minutes quota (0.00€ constraint).
+  # Live matchday & daily EOD runs are managed efficiently by fpl-matchday-sync.yml.
+  # schedule:
+  #   - cron: '4,19,34,49 * * * *'
   
   # External API triggers
   repository_dispatch:

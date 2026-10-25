@@ -1,13 +1,27 @@
-name: FPL Matchday Serverless Sync Daemon (Zero-Cost)
+name: FPL Matchday & Daily EOD Sync Daemon (Zero-Cost)
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Sync Mode'
+        required: false
+        default: 'active'
+        type: choice
+        options:
+          - active
+          - eod
+          - full
+          - history
   schedule:
-    # Premier League Matchday windows (UTC):
     # 1. Weekend Match Days (Saturday & Sunday 12:00 - 21:00 UTC) every 5 minutes
     - cron: '*/5 12-21 * * 0,6'
-    # 2. Midweek & Friday Night Football (Tuesday, Wednesday, Friday 18:00 - 22:00 UTC)
+    # 2. Midweek & Friday Night Football (Tuesday, Wednesday, Friday 18:00 - 22:00 UTC) every 10 minutes
     - cron: '*/10 18-22 * * 2,3,5'
+    # 3. Daily End-of-Day Consolidation (23:30 UTC every day) - Settles bonus points and closed GWs
+    - cron: '30 23 * * *'
+    # 4. Daily Morning Pre-Deadline Check (08:00 UTC every day) - Syncs waivers & upcoming GW lineup
+    - cron: '0 8 * * *'
 
 permissions:
   contents: read
@@ -18,7 +32,7 @@ concurrency:
 
 jobs:
   matchday_sync:
-    name: Execute Matchday Live Sync & Heartbeat
+    name: Execute Matchday / EOD Sync & Heartbeat
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -44,4 +58,16 @@ jobs:
 
       - name: Run Live FPL Sync & Emit Heartbeat
         run: |
-          python src/etl/sync_fpl_draft_to_supabase.py --once
+          if [ "${{ github.event.inputs.mode }}" = "eod" ] || [ "${{ github.event.schedule }}" = "30 23 * * *" ] || [ "${{ github.event.schedule }}" = "0 8 * * *" ]; then
+            echo "🌙 Running Daily End-of-Day / Pre-Deadline Consolidation Sync..."
+            python src/etl/sync_fpl_draft_to_supabase.py --eod
+          elif [ "${{ github.event.inputs.mode }}" = "full" ]; then
+            echo "📌 Running Manual Full Sync..."
+            python src/etl/sync_fpl_draft_to_supabase.py --full
+          elif [ "${{ github.event.inputs.mode }}" = "history" ]; then
+            echo "📚 Running Full History Sync..."
+            python src/etl/sync_fpl_draft_to_supabase.py --full --history
+          else
+            echo "⚡ Running Matchday Live Sync (with Active Window Early Exit)..."
+            python src/etl/sync_fpl_draft_to_supabase.py --check-active
+          fi

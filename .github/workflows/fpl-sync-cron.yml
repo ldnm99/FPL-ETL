@@ -2,18 +2,13 @@ name: FPL Zero-Cost Adaptive Sync Cron
 
 on:
   workflow_dispatch:
-  # Premier League Matchday Scheduled Runs (UTC)
-  schedule:
-    # 1. Saturday Match Window (11:00 - 21:00 UTC) every 15 mins
-    - cron: '*/15 11-21 * * 6'
-    # 2. Sunday Match Window (12:00 - 20:00 UTC) every 15 mins
-    - cron: '*/15 12-20 * * 0'
-    # 3. Midweek European / PL evening fixtures (Tue, Wed, Thu 18:00 - 22:00 UTC)
-    - cron: '*/15 18-22 * * 2,3,4'
-    # 4. Friday & Monday Night Football (19:00 - 22:00 UTC)
-    - cron: '*/15 19-22 * * 1,5'
-    # 5. Off-matchday daily morning baseline health check (06:00 UTC)
-    - cron: '0 6 * * *'
+  # Deprecated in favor of unified schedule in fpl-matchday-sync.yml to avoid duplicate runs
+  # schedule:
+  #   - cron: '*/15 11-21 * * 6'
+  #   - cron: '*/15 12-20 * * 0'
+  #   - cron: '*/15 18-22 * * 2,3,4'
+  #   - cron: '*/15 19-22 * * 1,5'
+  #   - cron: '0 6 * * *'
 
 permissions:
   contents: read

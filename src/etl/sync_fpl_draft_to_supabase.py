@@ -14,6 +14,8 @@ import time
 import json
 import logging
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 from typing import Dict, List, Any
 from pathlib import Path
 from dotenv import load_dotenv
@@ -23,6 +25,22 @@ load_dotenv()
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# Setup Reusable HTTP Session with Exponential Backoff Retries
+def create_resilient_session() -> requests.Session:
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        raise_on_status=False
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+HTTP_SESSION = create_resilient_session()
 
 try:
     from supabase import create_client, Client
@@ -44,10 +62,10 @@ def get_supabase_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def fetch_json(endpoint: str) -> Dict[str, Any]:
-    """Fetch JSON payload from FPL Draft API with timeout & error handling."""
+    """Fetch JSON payload from FPL Draft API with connection pooling, retry & error handling."""
     url = f"{FPL_DRAFT_BASE_URL}{endpoint}"
     try:
-        res = requests.get(url, timeout=15)
+        res = HTTP_SESSION.get(url, timeout=15)
         res.raise_for_status()
         return res.json()
     except Exception as e:
@@ -145,7 +163,7 @@ def sync_fixtures(supabase: Client, current_gw: int = None, refresh_all: bool = 
         fixtures_url = f"https://fantasy.premierleague.com/api/fixtures/?event={current_gw}"
 
     try:
-        res = requests.get(fixtures_url, timeout=15)
+        res = HTTP_SESSION.get(fixtures_url, timeout=15)
         res.raise_for_status()
         fixtures_data = res.json()
     except Exception as e:
@@ -218,11 +236,39 @@ def sync_league_managers(supabase: Client, league_id: str = DEFAULT_LEAGUE_ID):
         return entries
     return []
 
-def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Dict[str, Any]], current_gw: int = 2):
+def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Dict[str, Any]], current_gw: int = 1, sync_all_history: bool = False):
     """
-    Extracts manager picks and player performance stats for all gameweeks up to current_gw.
+    Extracts manager picks and player performance stats.
+    By default, syncs only the current active gameweek (4s execution).
+    When sync_all_history is True, syncs all gameweeks 1..current_gw.
     """
-    for gw in range(1, current_gw + 1):
+    target_gws = list(range(1, current_gw + 1)) if sync_all_history else [current_gw]
+    logging.info(f"📊 Syncing Picks & Performance for Gameweek(s): {target_gws} (history={sync_all_history})...")
+
+    # Fetch player position map once outside loop
+    pos_map = {}
+    try:
+        p_res = supabase.table("dim_players").select("id, element_type").execute()
+        if p_res.data:
+            pos_map = {row["id"]: row.get("element_type", 3) for row in p_res.data}
+    except Exception as e_pos:
+        logging.warning(f"⚠️ Notice fetching player position map: {e_pos}")
+
+    # Build Code -> Draft ID and Reg ID -> Code translation maps once outside loop
+    reg_id_to_code = {}
+    code_to_draft_id = {}
+    try:
+        r_reg_bs = HTTP_SESSION.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
+        if r_reg_bs.ok:
+            reg_id_to_code = {p["id"]: p["code"] for p in r_reg_bs.json().get("elements", [])}
+
+        r_draft_bs = fetch_json("/bootstrap-static")
+        if r_draft_bs and "elements" in r_draft_bs:
+            code_to_draft_id = {p["code"]: p["id"] for p in r_draft_bs.get("elements", [])}
+    except Exception as e_map:
+        logging.warning(f"⚠️ Notice building player code map: {e_map}")
+
+    for gw in target_gws:
         logging.info(f"📊 Fetching Manager Picks and Performance Stats for GW {gw}...")
         
         # 1. Sync Manager Picks for GW
@@ -251,26 +297,12 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
 
         # 2. Sync Player Performance Stats for GW (Real-Time Regular FPL API with Code Mapping)
         try:
-            # Build Code -> Draft ID and Reg ID -> Code translation maps
-            reg_id_to_code = {}
-            code_to_draft_id = {}
-            try:
-                r_reg_bs = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
-                if r_reg_bs.ok:
-                    reg_id_to_code = {p["id"]: p["code"] for p in r_reg_bs.json().get("elements", [])}
-
-                r_draft_bs = fetch_json("/bootstrap-static")
-                if r_draft_bs and "elements" in r_draft_bs:
-                    code_to_draft_id = {p["code"]: p["id"] for p in r_draft_bs.get("elements", [])}
-            except Exception as e_map:
-                logging.warning(f"⚠️ Notice building player code map: {e_map}")
-
             # Prefer Regular FPL API (fantasy.premierleague.com) for sub-second real-time live stats
             reg_url = f"https://fantasy.premierleague.com/api/event/{gw}/live/"
             elements_data = []
             is_regular_api = False
             try:
-                r_reg = requests.get(reg_url, timeout=15)
+                r_reg = HTTP_SESSION.get(reg_url, timeout=15)
                 if r_reg.ok:
                     res_json = r_reg.json()
                     elements_data = res_json.get("elements", [])
@@ -287,15 +319,6 @@ def sync_manager_picks_and_performance(supabase: Client, league_entries: List[Di
                     elements_data = [{"id": int(k), **v} for k, v in raw_elems.items()]
                 elif isinstance(raw_elems, list):
                     elements_data = raw_elems
-
-            # Fetch player position map from dim_players to distinguish DEF (2) vs MID (3)
-            pos_map = {}
-            try:
-                p_res = supabase.table("dim_players").select("id, element_type").execute()
-                if p_res.data:
-                    pos_map = {row["id"]: row.get("element_type", 3) for row in p_res.data}
-            except Exception:
-                pass
             
             perf_records = []
             for item in elements_data:
@@ -372,22 +395,46 @@ def update_sync_heartbeat(supabase: Client, status: str = "ok", current_gw: int 
         logging.warning(f"⚠️ Heartbeat write notice (sync_status table may be pending): {err}")
 
 
-def is_fixture_window_active(supabase: Client) -> bool:
+def is_fixture_window_active(supabase: Client, current_gw: int = None) -> bool:
     """
-    Detect if any Premier League match is currently live:
-    started == True and finished == False and finished_provisional == False.
-    Enables adaptive polling: fast 60s during matches, 30m eco-mode outside matchdays.
+    Detect if any Premier League match is currently live or in post-match BPS settlement:
+    - started == True and finished == False (Live match in progress)
+    - OR finished_provisional == True and finished == False (Opta bonus settlement window)
+    - OR kickoff is within [-150m, +25m] of current UTC time and not finished
     """
     try:
-        res = (
-            supabase.table("dim_fixtures")
-            .select("id, started, finished, finished_provisional")
-            .eq("started", True)
-            .eq("finished", False)
-            .eq("finished_provisional", False)
-            .execute()
-        )
-        return bool(res.data and len(res.data) > 0)
+        from datetime import datetime, timezone, timedelta
+        query = supabase.table("dim_fixtures").select("id, started, finished, finished_provisional, kickoff_time")
+        if current_gw:
+            query = query.eq("gameweek_id", current_gw)
+        res = query.execute()
+        if not res.data:
+            return False
+
+        now = datetime.now(timezone.utc)
+        for f in res.data:
+            started = f.get("started", False)
+            finished = f.get("finished", False)
+            finished_prov = f.get("finished_provisional", False)
+            
+            # Live in-play
+            if started and not finished:
+                return True
+            # Post-match provisional settlement (BPS, bonus points recalculation)
+            if finished_prov and not finished:
+                return True
+            
+            # Imminent or recently kicked off match window
+            kickoff_str = f.get("kickoff_time")
+            if kickoff_str and not finished:
+                try:
+                    ko = datetime.fromisoformat(kickoff_str.replace("Z", "+00:00"))
+                    if (now - timedelta(minutes=150)) <= ko <= (now + timedelta(minutes=25)):
+                        return True
+                except Exception:
+                    pass
+
+        return False
     except Exception as err:
         logging.warning(f"⚠️ Error checking active fixture window: {err}")
         return False
@@ -396,18 +443,25 @@ def is_fixture_window_active(supabase: Client) -> bool:
 # ------------------------------------------------------------
 # Main Execution Entry Point
 # ------------------------------------------------------------
-def main(full_sync: bool = False, loop_interval: int = 0):
+def main(
+    full_sync: bool = False,
+    loop_interval: int = 0,
+    sync_all_history: bool = False,
+    check_active: bool = False,
+    is_eod: bool = False
+):
+    mode_name = "EOD CONSOLIDATION" if is_eod else ("FULL METADATA" if full_sync else "FAST LIVE SYNC")
     logging.info("==================================================")
-    logging.info(f"🚀 Modern ELT Sync (Mode: {'FULL METADATA' if full_sync else 'FAST LIVE SYNC'})")
+    logging.info(f"🚀 Modern ELT Sync (Mode: {mode_name})")
     logging.info("==================================================")
 
     supabase = get_supabase_client()
 
     while True:
         try:
-            # 1. Sync Static Metadata only when requested or if tables are empty
-            if full_sync:
-                logging.info("📌 Full Sync Mode: Updating static metadata (Clubs, Players, Gameweeks)...")
+            # 1. Sync Static Metadata when requested or in EOD mode
+            if full_sync or is_eod:
+                logging.info("📌 Syncing static metadata (Clubs, Players, Gameweeks)...")
                 current_gw_id = sync_bootstrap_data(supabase) or 1
             else:
                 logging.info("⚡ Fast Live Mode: Skipping static club/player tables for sub-second execution...")
@@ -417,17 +471,34 @@ def main(full_sync: bool = False, loop_interval: int = 0):
                 except Exception:
                     current_gw_id = 1
 
-            # 2. Sync Fixtures, Managers & Live Performance Stats
-            sync_fixtures(supabase, current_gw=current_gw_id, refresh_all=full_sync)
+            # 2. Sync Fixtures for Current Gameweek to ensure up-to-date match state
+            sync_fixtures(supabase, current_gw=current_gw_id, refresh_all=(full_sync and not is_eod))
+
+            # 3. If in check_active mode, test if matches are active before doing heavier picks/perf calls
+            if check_active and not is_eod:
+                active_now = is_fixture_window_active(supabase, current_gw=current_gw_id)
+                if not active_now:
+                    logging.info("⏸️ Matchday Window Check: No live, provisional, or imminent matches right now.")
+                    logging.info("🌙 Exiting early to preserve GitHub Actions free runner quota.")
+                    update_sync_heartbeat(supabase, status="idle_standby", current_gw=current_gw_id)
+                    return
+                logging.info("🔥 Live match action detected! Proceeding with manager picks and live stats sync...")
+
+            # 4. Sync Managers, Picks & Live Performance Stats
             entries = sync_league_managers(supabase)
-            
             if entries:
-                sync_manager_picks_and_performance(supabase, entries, current_gw=current_gw_id)
+                sync_manager_picks_and_performance(
+                    supabase,
+                    entries,
+                    current_gw=current_gw_id,
+                    sync_all_history=sync_all_history
+                )
 
-            # 3. Update Pipeline Telemetry Heartbeat
-            update_sync_heartbeat(supabase, status="ok", current_gw=current_gw_id)
+            # 5. Update Pipeline Telemetry Heartbeat
+            heartbeat_status = "eod_settled" if is_eod else "ok"
+            update_sync_heartbeat(supabase, status=heartbeat_status, current_gw=current_gw_id)
 
-            logging.info("✨ ELT Sync Complete! SQL Views (vw_draft_gameweek_overview) updated automatically.")
+            logging.info(f"✨ ELT Sync Complete ({mode_name})! SQL Views updated automatically.")
 
         except Exception as e:
             logging.error(f"❌ Error during sync cycle: {e}")
@@ -436,7 +507,7 @@ def main(full_sync: bool = False, loop_interval: int = 0):
             break
 
         # Adaptive Polling: 60s when matches are live, 30 min (1800s) eco-mode when idle
-        active_fixtures = is_fixture_window_active(supabase)
+        active_fixtures = is_fixture_window_active(supabase, current_gw=current_gw_id)
         sleep_duration = loop_interval if active_fixtures else max(loop_interval, 1800)
         mode_label = "⚽ LIVE MATCHES ONGOING (60s loop)" if active_fixtures else "🌙 ECO MODE: No live matches active (30m loop)"
         logging.info(f"⏱️ {mode_label} -> Sleeping for {sleep_duration} seconds...")
@@ -451,7 +522,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     is_full = "--full" in sys.argv
+    is_eod = "--eod" in sys.argv
+    is_check_active = "--check-active" in sys.argv
+    is_history = "--history" in sys.argv
     is_once = "--once" in sys.argv
+
     interval = 0
     if "--loop" in sys.argv and not is_once:
         try:
@@ -460,4 +535,10 @@ if __name__ == "__main__":
         except Exception:
             interval = 60
 
-    main(full_sync=is_full, loop_interval=interval)
+    main(
+        full_sync=is_full,
+        loop_interval=interval,
+        sync_all_history=is_history,
+        check_active=is_check_active,
+        is_eod=is_eod
+    )
