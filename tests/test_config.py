@@ -43,7 +43,8 @@ class TestConfigPaths:
     def test_supabase_path(self):
         from src.config import config
         path = config.get_supabase_path("bronze", "test.json")
-        assert path == "bronze/test.json"
+        expected = f"{config.SEASON_PREFIX}/bronze/test.json" if config.SEASON_PREFIX else "bronze/test.json"
+        assert path == expected
 
     def test_incremental_mode_comment_matches_behavior(self):
         """INCREMENTAL_MODE=False should mean full load, not incremental."""

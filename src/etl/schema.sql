@@ -269,3 +269,104 @@ ALTER TABLE fact_manager_lineup_gw ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public read access on fact_manager_lineup_gw" ON fact_manager_lineup_gw;
 CREATE POLICY "Allow public read access on fact_manager_lineup_gw" ON fact_manager_lineup_gw FOR SELECT USING (true);
 
+-- ------------------------------------------------------------
+-- 5. MULTI-SEASON HISTORICAL SCHEMA & VIEWS
+-- ------------------------------------------------------------
+
+-- Seasons Dimension (3 Seasons)
+CREATE TABLE IF NOT EXISTS dim_seasons (
+    id VARCHAR(10) PRIMARY KEY, -- '2024_2025', '2025_2026', '2026_2027'
+    name VARCHAR(50) NOT NULL,
+    league_id INT NOT NULL,
+    is_current BOOLEAN DEFAULT FALSE,
+    champion_name VARCHAR(100),
+    total_gameweeks INT DEFAULT 38
+);
+
+ALTER TABLE dim_seasons ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on dim_seasons" ON dim_seasons;
+CREATE POLICY "Allow public read access on dim_seasons" ON dim_seasons FOR SELECT USING (true);
+
+INSERT INTO dim_seasons (id, name, league_id, is_current, champion_name, total_gameweeks) VALUES
+    ('2024_2025', 'Época 2024/2025', 70113, FALSE, 'Clev Clevinson Rodriguez', 38),
+    ('2025_2026', 'Época 2025/2026', 24636, FALSE, 'Lourenço Marvão', 38),
+    ('2026_2027', 'Época 2026/2027', 38279, TRUE, NULL, 38)
+ON CONFLICT (id) DO UPDATE SET 
+    is_current = EXCLUDED.is_current,
+    champion_name = EXCLUDED.champion_name;
+
+-- Manager Identity (8 Distinct Managers across all seasons)
+CREATE TABLE IF NOT EXISTS dim_manager_identity (
+    canonical_id INT PRIMARY KEY,
+    manager_name VARCHAR(100) NOT NULL,
+    is_active_current_season BOOLEAN DEFAULT TRUE
+);
+
+ALTER TABLE dim_manager_identity ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on dim_manager_identity" ON dim_manager_identity;
+CREATE POLICY "Allow public read access on dim_manager_identity" ON dim_manager_identity FOR SELECT USING (true);
+
+INSERT INTO dim_manager_identity (canonical_id, manager_name, is_active_current_season) VALUES
+    (199289, 'Lourenço Marvão', TRUE),
+    (204604, 'Clev Clevinson Rodriguez', TRUE),
+    (346616, 'Bernardo Moura', TRUE),
+    (202383, 'Tiago Duarte', TRUE),
+    (210387, 'Diogo Santana', TRUE),
+    (244074, 'Vasco Carvalho', TRUE),
+    (144396, 'Luis Costa', FALSE),                    -- 2025/2026 Alumnus
+    (210890, 'João Pedro ("Gordinho Chill")', TRUE)  -- 2026/2027 Debutant
+ON CONFLICT (canonical_id) DO UPDATE SET manager_name = EXCLUDED.manager_name;
+
+-- Manager Season Metadata
+CREATE TABLE IF NOT EXISTS dim_manager_seasons (
+    season_id VARCHAR(10) REFERENCES dim_seasons(id) ON DELETE CASCADE,
+    canonical_id INT REFERENCES dim_manager_identity(canonical_id) ON DELETE CASCADE,
+    season_manager_id INT NOT NULL,
+    team_name VARCHAR(100) NOT NULL,
+    final_rank INT,
+    total_starter_points INT DEFAULT 0,
+    total_bench_points INT DEFAULT 0,
+    PRIMARY KEY (season_id, canonical_id)
+);
+
+ALTER TABLE dim_manager_seasons ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on dim_manager_seasons" ON dim_manager_seasons;
+CREATE POLICY "Allow public read access on dim_manager_seasons" ON dim_manager_seasons FOR SELECT USING (true);
+
+-- Ensure multi-season columns exist on fact tables
+ALTER TABLE fact_manager_picks ADD COLUMN IF NOT EXISTS season_id VARCHAR(10) DEFAULT '2026_2027';
+ALTER TABLE fact_player_performance ADD COLUMN IF NOT EXISTS season_id VARCHAR(10) DEFAULT '2026_2027';
+
+-- All-Time Cross-Season Head-to-Head Rivalry View
+CREATE OR REPLACE VIEW vw_h2h_rivalry_all_time AS
+SELECT 
+    m1.canonical_id AS manager_a_id,
+    m1.manager_name AS manager_a_name,
+    m2.canonical_id AS manager_b_id,
+    m2.manager_name AS manager_b_name,
+    COUNT(*) AS total_matches_played,
+    SUM(CASE WHEN s1.points > s2.points THEN 1 ELSE 0 END) AS wins_a,
+    SUM(CASE WHEN s2.points > s1.points THEN 1 ELSE 0 END) AS wins_b,
+    SUM(CASE WHEN s1.points = s2.points THEN 1 ELSE 0 END) AS draws,
+    SUM(s1.points) AS total_points_a,
+    SUM(s2.points) AS total_points_b
+FROM (
+    SELECT mp.season_id, mp.gameweek_id, ms.canonical_id, SUM(pp.total_points) as points
+    FROM fact_manager_picks mp
+    JOIN dim_manager_seasons ms ON mp.season_id = ms.season_id AND mp.manager_id = ms.season_manager_id
+    JOIN fact_player_performance pp ON mp.season_id = pp.season_id AND mp.player_id = pp.player_id AND mp.gameweek_id = pp.gameweek_id
+    WHERE mp.position <= 11
+    GROUP BY mp.season_id, mp.gameweek_id, ms.canonical_id
+) s1
+JOIN dim_manager_identity m1 ON s1.canonical_id = m1.canonical_id
+JOIN (
+    SELECT mp.season_id, mp.gameweek_id, ms.canonical_id, SUM(pp.total_points) as points
+    FROM fact_manager_picks mp
+    JOIN dim_manager_seasons ms ON mp.season_id = ms.season_id AND mp.manager_id = ms.season_manager_id
+    JOIN fact_player_performance pp ON mp.season_id = pp.season_id AND mp.player_id = pp.player_id AND mp.gameweek_id = pp.gameweek_id
+    WHERE mp.position <= 11
+    GROUP BY mp.season_id, mp.gameweek_id, ms.canonical_id
+) s2 ON s1.season_id = s2.season_id AND s1.gameweek_id = s2.gameweek_id AND s1.canonical_id < s2.canonical_id
+JOIN dim_manager_identity m2 ON s2.canonical_id = m2.canonical_id
+GROUP BY m1.canonical_id, m1.manager_name, m2.canonical_id, m2.manager_name;
+

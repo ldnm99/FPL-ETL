@@ -5,11 +5,14 @@ calculates position-tailored Defcons, validates records with Pydantic v2 schemas
 and upserts into Supabase fact_manager_picks and fact_player_performance.
 """
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from src.etl.sync.client import HTTP_SESSION, fetch_json
 from src.etl.schemas import ManagerPickIngest, PlayerPerformanceIngest
+from src.etl.sync.history_feed import feed_local_history
 
 logger = logging.getLogger("fpl_sync.performance")
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def sync_manager_picks_and_performance(
@@ -167,6 +170,15 @@ def sync_manager_picks_and_performance(
                 supabase.table("fact_player_performance").upsert(perf_records).execute()
                 total_perf_synced += len(perf_records)
                 logger.info(f"✅ Upserted {len(perf_records)} validated performance records for GW {gw}")
+
+            # Dual-Write to local SQLite historical database and multi-season Parquet
+            feed_local_history(
+                REPO_ROOT,
+                season_id="2026_2027",
+                gameweek_id=gw,
+                manager_picks=all_picks if 'all_picks' in locals() else None,
+                player_performance=perf_records
+            )
 
         except Exception as err:
             logger.warning(f"⚠️ Notice fetching live stats for GW {gw}: {err}")
