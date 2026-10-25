@@ -144,7 +144,9 @@ SELECT
     COALESCE(pp.total_points, 0) AS points,
     COALESCE(pp.goals_scored, 0) AS goals,
     COALESCE(pp.assists, 0) AS assists,
-    COALESCE(pp.minutes, 0) AS minutes
+    COALESCE(pp.minutes, 0) AS minutes,
+    p.photo,
+    p.photo_code
 FROM fact_manager_picks mp
 JOIN dim_managers m ON mp.manager_id = m.id
 JOIN dim_players p ON mp.player_id = p.id
