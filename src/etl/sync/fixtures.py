@@ -80,7 +80,12 @@ def is_fixture_window_active(supabase, current_gw: int = None) -> bool:
             query = query.eq("gameweek_id", current_gw)
         res = query.execute()
         if not res.data:
-            return False
+            if current_gw:
+                logger.info(f"📅 No fixtures found in DB for Gameweek {current_gw}; fetching live from FPL API...")
+                sync_fixtures(supabase, current_gw=current_gw)
+                res = query.execute()
+            if not res.data:
+                return False
 
         now = datetime.now(timezone.utc)
         for f in res.data:

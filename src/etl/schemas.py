@@ -51,7 +51,7 @@ class GameweekIngest(BaseModel):
 
 class FixtureIngest(BaseModel):
     """Validated model for dim_fixtures record."""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     id: int
     gameweek_id: Optional[int] = Field(default=None, alias="event")
