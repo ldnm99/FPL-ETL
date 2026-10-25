@@ -45,6 +45,7 @@ env/
 # Project specific
 Data/
 *.db
+*.sqlite
 last_updated.txt
 
 # Temporary files

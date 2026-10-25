@@ -211,6 +211,29 @@ ALTER TABLE sync_status ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public read access on sync_status" ON sync_status;
 CREATE POLICY "Allow public read access on sync_status" ON sync_status FOR SELECT USING (true);
 
+-- Pipeline Run History & Audit Ledger (Persistent run logs for catching errors & tracking point changes)
+CREATE TABLE IF NOT EXISTS pipeline_run_history (
+    id BIGSERIAL PRIMARY KEY,
+    run_timestamp TIMESTAMPTZ DEFAULT NOW(),
+    mode VARCHAR(50) NOT NULL,
+    gameweek_id INT DEFAULT 1,
+    status VARCHAR(50) NOT NULL,
+    duration_ms INT DEFAULT 0,
+    fixtures_count INT DEFAULT 0,
+    managers_count INT DEFAULT 0,
+    picks_count INT DEFAULT 0,
+    perf_records_count INT DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_history_timestamp ON pipeline_run_history(run_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_run_history_gw ON pipeline_run_history(gameweek_id);
+
+ALTER TABLE pipeline_run_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access on pipeline_run_history" ON pipeline_run_history;
+CREATE POLICY "Allow public read access on pipeline_run_history" ON pipeline_run_history FOR SELECT USING (true);
+
 -- Waiver Wire Sleeper Recommendations
 CREATE TABLE IF NOT EXISTS gold_waiver_recommendations (
     player_id INT PRIMARY KEY,
