@@ -101,13 +101,16 @@ def create_dim_players() -> pd.DataFrame:
     
     logging.info(f"📊 Player data has {len(df.columns)} columns")
     
-    # Load clubs to get club_id
+    # Load clubs to get club_id mapping
     dim_clubs = pd.read_parquet(config.GOLD_DIR + '/dimensions/dim_clubs.parquet')
-    club_map = dict(zip(dim_clubs['short_name'], dim_clubs['club_id']))
     
-    # Map team to club_id
+    # Map team to club_id (handles numeric team ID or team short_name)
     if 'team' in df.columns:
-        df['club_id'] = df['team'].map(club_map)
+        if pd.to_numeric(df['team'], errors='coerce').notnull().all():
+            df['club_id'] = df['team'].astype(int)
+        else:
+            club_map = dict(zip(dim_clubs['short_name'], dim_clubs['club_id']))
+            df['club_id'] = df['team'].map(club_map)
     
     # Add SCD Type 2 columns
     df['player_key'] = df['player_id']  # Surrogate key (for now same as natural key)

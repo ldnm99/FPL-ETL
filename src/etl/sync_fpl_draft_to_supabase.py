@@ -131,6 +131,19 @@ def main(
 
             logger.info(f"✨ ELT Sync Complete ({mode_name}) in {duration_ms}ms! SQL Views updated automatically.")
 
+            # 6. If in EOD mode, execute Scikit-Learn Performance Clustering & Analytics
+            if is_eod:
+                logger.info("🧠 Running Nightly Scikit-Learn Gold Analytics & Performance Clustering Pipeline...")
+                try:
+                    from src.etl.gold_analytics import run_gold_analytics_pipeline
+                    analytics_res = run_gold_analytics_pipeline()
+                    logger.info(
+                        f"✅ Gold Analytics Pipeline complete: {analytics_res.get('total_players_analyzed', 0)} "
+                        f"players analyzed in {analytics_res.get('execution_time_seconds', 0)}s."
+                    )
+                except Exception as e_analytics:
+                    logger.warning(f"⚠️ Gold Analytics execution encountered an issue: {e_analytics}")
+
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
             error_msg = str(e)

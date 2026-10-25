@@ -21,7 +21,14 @@ if hasattr(sys.stderr, 'reconfigure'):
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-from src.etl.performance_clusters import run_performance_clustering, get_supabase_client
+sys_path_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if sys_path_root not in sys.path:
+    sys.path.insert(0, sys_path_root)
+
+try:
+    from src.etl.performance_clusters import run_performance_clustering, get_supabase_client
+except ModuleNotFoundError:
+    from performance_clusters import run_performance_clustering, get_supabase_client
 
 
 def run_gold_analytics_pipeline() -> Dict[str, Any]:

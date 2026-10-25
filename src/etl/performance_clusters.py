@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 
 from dotenv import load_dotenv
 
@@ -77,6 +77,40 @@ def load_base_player_dataset() -> pd.DataFrame:
         return df
 
     raise FileNotFoundError("Could not find base player data source.")
+
+
+def load_historical_calibration_data() -> Optional[pd.DataFrame]:
+    """
+    Loads historical multi-season player performance to calibrate baseline expected points regression.
+    Avoids overfitting on small early-season samples (e.g. GW 1-8).
+    """
+    # 1. Try parquet first
+    parquet_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "Data", "history", "fact_player_performance_all_seasons.parquet")
+    )
+    if os.path.exists(parquet_path):
+        try:
+            df_hist = pd.read_parquet(parquet_path)
+            logging.info(f"📚 Loaded {len(df_hist)} historical facts from {os.path.basename(parquet_path)}")
+            return df_hist
+        except Exception as e:
+            logging.warning(f"⚠️ Could not read historical parquet: {e}")
+
+    # 2. Try sqlite
+    sqlite_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "Data", "fpl_draft_history.sqlite")
+    )
+    if os.path.exists(sqlite_path):
+        try:
+            import sqlite3
+            with sqlite3.connect(sqlite_path) as conn:
+                df_hist = pd.read_sql_query("SELECT * FROM fact_player_performance", conn)
+            logging.info(f"📚 Loaded {len(df_hist)} historical facts from fpl_draft_history.sqlite")
+            return df_hist
+        except Exception as e:
+            logging.warning(f"⚠️ Could not read historical sqlite: {e}")
+
+    return None
 
 
 def run_performance_clustering(supabase_client=None) -> List[Dict[str, Any]]:
@@ -170,13 +204,56 @@ def run_performance_clustering(supabase_client=None) -> List[Dict[str, Any]]:
     for col in ["gw_points_per_90", "xgi_per_90", "defcon_rate"]:
         df_active[col] = df_active[col].fillna(0).replace([np.inf, -np.inf], 0)
 
-    # 6. Fit Linear Regression for Expected Baseline Points
-    X_reg = df_active[["xgi_per_90", "defcon_rate"]].values
-    y_reg = df_active["gw_points_per_90"].values
+    # 6. Fit Multi-Season Calibrated Regression for Expected Baseline Points
+    df_hist = load_historical_calibration_data()
+    hist_ps = None
+    if df_hist is not None and not df_hist.empty:
+        try:
+            group_cols = ["season_id", "player_id"]
+            avail_cols = [c for c in ["minutes", "total_points", "goals_scored", "assists", "defensive_contribution"] if c in df_hist.columns]
+            hist_grouped = df_hist.groupby(group_cols)[avail_cols].sum().reset_index()
+            # Filter players with at least 5 matches (450 mins)
+            hist_ps = hist_grouped[hist_grouped["minutes"] >= 450].copy()
+            hist_ps["nineties"] = hist_ps["minutes"] / 90.0
+            hist_ps["gw_points_per_90"] = (hist_ps["total_points"] / hist_ps["nineties"]).round(2)
+            # Use goal involvements / 90 as attacking proxy for xGI
+            goals = hist_ps["goals_scored"] if "goals_scored" in hist_ps.columns else 0
+            assists = hist_ps["assists"] if "assists" in hist_ps.columns else 0
+            hist_ps["xgi_per_90"] = ((goals + assists) / hist_ps["nineties"]).round(2)
+            defcon = hist_ps["defensive_contribution"] if "defensive_contribution" in hist_ps.columns else 0
+            hist_ps["defcon_rate"] = (defcon / hist_ps["nineties"]).round(2)
+            for c in ["gw_points_per_90", "xgi_per_90", "defcon_rate"]:
+                hist_ps[c] = hist_ps[c].fillna(0).replace([np.inf, -np.inf], 0)
+        except Exception as e:
+            logging.warning(f"⚠️ Failed to process historical aggregates: {e}")
+            hist_ps = None
 
-    reg = LinearRegression()
-    reg.fit(X_reg, y_reg)
-    df_active["expected_pts_per_90"] = np.round(reg.predict(X_reg), 2)
+    if hist_ps is not None and len(hist_ps) >= 50:
+        logging.info(f"🎯 Calibrating baseline regression with {len(hist_ps)} multi-season historical player baselines.")
+        X_hist = hist_ps[["xgi_per_90", "defcon_rate"]]
+        y_hist = hist_ps["gw_points_per_90"]
+
+        X_cur = df_active[["xgi_per_90", "defcon_rate"]]
+        y_cur = df_active["gw_points_per_90"]
+
+        # Current season players get sample_weight=1.0, historical seasons get sample_weight=0.35 (empirical prior)
+        X_all = pd.concat([X_hist, X_cur], ignore_index=True).values
+        y_all = pd.concat([y_hist, y_cur], ignore_index=True).values
+        sample_weights = np.concatenate([np.full(len(X_hist), 0.35), np.full(len(X_cur), 1.0)])
+
+        reg = Ridge(alpha=1.0)
+        reg.fit(X_all, y_all, sample_weight=sample_weights)
+        logging.info(f"📊 Calibrated Regression Coefs (xgi, defcon): {reg.coef_}, Intercept: {reg.intercept_:.2f}")
+    else:
+        # Fallback to standard linear regression on current active players
+        X_reg = df_active[["xgi_per_90", "defcon_rate"]].values
+        y_reg = df_active["gw_points_per_90"].values
+        reg = LinearRegression()
+        reg.fit(X_reg, y_reg)
+        logging.info(f"📊 Current Season Regression Coefs (xgi, defcon): {reg.coef_}, Intercept: {reg.intercept_:.2f}")
+
+    X_cur_pred = df_active[["xgi_per_90", "defcon_rate"]].values
+    df_active["expected_pts_per_90"] = np.round(reg.predict(X_cur_pred), 2)
     df_active["residual_delta"] = np.round(df_active["gw_points_per_90"] - df_active["expected_pts_per_90"], 2)
 
     # Calculate residual Z-Score

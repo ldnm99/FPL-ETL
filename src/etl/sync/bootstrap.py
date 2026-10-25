@@ -53,7 +53,9 @@ def sync_bootstrap_data(supabase) -> int:
         for p in elements:
             try:
                 pos_short = element_types.get(p.get("element_type"), "MID")
-                price_val = float(p.get("now_cost", 0)) / 10.0 if p.get("now_cost") else 0.0
+                code_val = p.get("code")
+                photo_str = f"{code_val}.jpg" if code_val else None
+                photo_code_str = str(code_val) if code_val else None
                 player_obj = PlayerIngest(
                     id=p["id"],
                     web_name=p["web_name"],
@@ -62,7 +64,9 @@ def sync_bootstrap_data(supabase) -> int:
                     club_id=p.get("team"),
                     position_name=pos_short,
                     element_type=p.get("element_type", 3),
-                    price=price_val
+                    price=price_val,
+                    photo=photo_str,
+                    photo_code=photo_code_str,
                 )
                 validated_players.append(player_obj.model_dump())
             except Exception as e_pl:

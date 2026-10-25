@@ -23,7 +23,7 @@ class ClubIngest(BaseModel):
 
 class PlayerIngest(BaseModel):
     """Validated model for dim_players record."""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     id: int
     web_name: str
@@ -33,6 +33,8 @@ class PlayerIngest(BaseModel):
     position_name: str = "MID"
     element_type: int = 3
     price: float = 0.0
+    photo: Optional[str] = None
+    photo_code: Optional[str] = None
 
 
 class GameweekIngest(BaseModel):
