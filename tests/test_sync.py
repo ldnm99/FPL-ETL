@@ -153,3 +153,64 @@ class TestFixtureWindowDetection:
         mock_supabase.table.return_value.select.return_value.eq.return_value = mock_query
 
         assert is_fixture_window_active(mock_supabase, current_gw=8) is False
+
+
+class TestPostGameweekSettlementAndReconciliation:
+    """Test gameweek pointer accuracy, 2-GW lookback window, and official standings self-healing."""
+
+    def test_bootstrap_respects_official_events_current(self, monkeypatch):
+        from src.etl.sync import bootstrap
+
+        # Simulate post-GW8 state where GW8 is finished=True, but official events.current is still 8
+        mock_payload = {
+            "teams": [{"id": 1, "name": "Arsenal", "short_name": "ARS", "code": 3}],
+            "element_types": [{"id": 3, "singular_name_short": "MID"}],
+            "elements": [
+                {"id": 10, "web_name": "Saka", "team": 1, "element_type": 3, "code": 223340, "draft_rank": 5}
+            ],
+            "events": {
+                "current": 8,
+                "next": 9,
+                "data": [
+                    {"id": 8, "name": "Gameweek 8", "finished": True, "deadline_time": "2026-10-23T17:30:00Z"},
+                    {"id": 9, "name": "Gameweek 9", "finished": False, "deadline_time": "2026-10-31T11:00:00Z"},
+                ],
+            },
+        }
+        monkeypatch.setattr(bootstrap, "fetch_json", lambda endpoint: mock_payload)
+
+        mock_supabase = MagicMock()
+        detected_gw = bootstrap.sync_bootstrap_data(mock_supabase)
+        assert detected_gw == 8
+
+    def test_reconcile_standings_detects_drift_and_heals(self, monkeypatch):
+        from src.etl.sync import performance
+
+        # Official API says Manager 199289 has 385 total (0 in current GW9 -> 385 in closed GWs 1..8)
+        league_entries = [
+            {"id": 199289, "entry_id": 199289, "api_total": 385, "api_event_total": 0},
+            {"id": 346616, "entry_id": 346616, "api_total": 383, "api_event_total": 0},
+        ]
+
+        # Supabase currently only has 382 for Manager 199289 (missed +3 auto-sub in GW8)
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value.select.return_value.eq.return_value.lt.return_value.execute.return_value.data = [
+            {"manager_id": 199289, "gameweek_id": 8, "points": 382, "is_starter": True},
+            {"manager_id": 346616, "gameweek_id": 8, "points": 383, "is_starter": True},
+        ]
+
+        heal_called = {}
+
+        def fake_sync(sb, entries, current_gw, sync_all_history=False, **kwargs):
+            heal_called["current_gw"] = current_gw
+            heal_called["sync_all_history"] = sync_all_history
+            return {"picks_count": 105, "perf_records_count": 669}
+
+        monkeypatch.setattr(performance, "sync_manager_picks_and_performance", fake_sync)
+
+        res = performance.reconcile_standings_with_official(mock_supabase, league_entries, current_gw=9)
+        assert res["healed"] is True
+        assert len(res["drifted_managers"]) == 1
+        assert res["drifted_managers"][0]["manager_id"] == 199289
+        assert res["drifted_managers"][0]["delta"] == 3
+        assert heal_called == {"current_gw": 8, "sync_all_history": True}

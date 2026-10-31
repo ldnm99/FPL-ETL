@@ -16,8 +16,8 @@ on:
   schedule:
     # 1. Weekend Match Days (Saturday & Sunday 12:00 - 21:00 UTC) every 5 minutes
     - cron: '*/5 12-21 * * 0,6'
-    # 2. Midweek & Friday Night Football (Tuesday, Wednesday, Friday 18:00 - 22:00 UTC) every 10 minutes
-    - cron: '*/10 18-22 * * 2,3,5'
+    # 2. Weekday & Evening Football (Mon, Tue, Wed, Thu, Fri 18:00 - 22:00 UTC) every 10 minutes
+    - cron: '*/10 18-22 * * 1,2,3,4,5'
     # 3. Daily End-of-Day Consolidation (23:30 UTC every day) - Settles bonus points and closed GWs
     - cron: '30 23 * * *'
     # 4. Daily Morning Pre-Deadline Check (08:00 UTC every day) - Syncs waivers & upcoming GW lineup

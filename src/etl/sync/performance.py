@@ -19,16 +19,31 @@ def sync_manager_picks_and_performance(
     supabase,
     league_entries: List[Dict[str, Any]],
     current_gw: int = 1,
-    sync_all_history: bool = False
+    sync_all_history: bool = False,
+    include_previous_gw: bool = False,
+    target_gws_override: List[int] = None
 ) -> Dict[str, int]:
     """
     Extracts manager picks and player performance stats.
     By default, syncs only the current active gameweek (3-4s execution).
+    When include_previous_gw is True (e.g. EOD or Full consolidation), syncs [current_gw - 1, current_gw]
+    to capture post-gameweek automatic substitutions, bonus settlements, and Opta stat adjustments.
     When sync_all_history is True, syncs all gameweeks 1..current_gw.
     Returns dictionary with counts: {"picks_count": X, "perf_records_count": Y}.
     """
-    target_gws = list(range(1, current_gw + 1)) if sync_all_history else [current_gw]
-    logger.info(f"📊 Syncing Picks & Performance for Gameweek(s): {target_gws} (history={sync_all_history})...")
+    if target_gws_override:
+        target_gws = sorted(set(g for g in target_gws_override if g >= 1))
+    elif sync_all_history:
+        target_gws = list(range(1, current_gw + 1))
+    elif include_previous_gw and current_gw > 1:
+        target_gws = [current_gw - 1, current_gw]
+    else:
+        target_gws = [current_gw]
+
+    logger.info(
+        f"📊 Syncing Picks & Performance for Gameweek(s): {target_gws} "
+        f"(history={sync_all_history}, include_previous_gw={include_previous_gw})..."
+    )
 
     total_picks_synced = 0
     total_perf_synced = 0
@@ -186,4 +201,83 @@ def sync_manager_picks_and_performance(
     return {
         "picks_count": total_picks_synced,
         "perf_records_count": total_perf_synced
+    }
+
+
+def reconcile_standings_with_official(
+    supabase,
+    league_entries: List[Dict[str, Any]],
+    current_gw: int = 1
+) -> Dict[str, Any]:
+    """
+    Self-Healing Standings Reconciliation Gate:
+    Compares cumulative starter points in Supabase for closed gameweeks (< current_gw)
+    against the official FPL Draft API standings (api_total - api_event_total).
+    If any manager's closed-gameweek total disagrees with the official API,
+    automatically re-syncs prior gameweeks to guarantee 100% scoring parity.
+    """
+    if not league_entries or current_gw <= 1:
+        return {"reconciled": True, "drifted_managers": [], "healed": False}
+
+    # Check if entries carry official API totals from /league/{id}/details
+    expected_prior_by_mgr: Dict[int, int] = {}
+    for e in league_entries:
+        mgr_id = e.get("id")
+        api_total = e.get("api_total")
+        api_event_total = e.get("api_event_total", 0) or 0
+        if mgr_id is not None and api_total is not None:
+            expected_prior_by_mgr[int(mgr_id)] = int(api_total) - int(api_event_total)
+
+    if not expected_prior_by_mgr:
+        return {"reconciled": True, "drifted_managers": [], "healed": False}
+
+    try:
+        res = (
+            supabase.table("vw_draft_gameweek_overview")
+            .select("manager_id, gameweek_id, points, is_starter")
+            .eq("is_starter", True)
+            .lt("gameweek_id", current_gw)
+            .execute()
+        )
+        rows = res.data or []
+    except Exception as err:
+        logger.warning(f"⚠️ Could not query vw_draft_gameweek_overview for reconciliation: {err}")
+        return {"reconciled": False, "drifted_managers": [], "healed": False}
+
+    sb_prior_by_mgr: Dict[int, int] = {mgr_id: 0 for mgr_id in expected_prior_by_mgr}
+    for r in rows:
+        m_id = r.get("manager_id")
+        if m_id in sb_prior_by_mgr:
+            sb_prior_by_mgr[m_id] += int(r.get("points") or 0)
+
+    drifted = []
+    for mgr_id, official_pts in expected_prior_by_mgr.items():
+        sb_pts = sb_prior_by_mgr.get(mgr_id, 0)
+        if sb_pts != official_pts:
+            drifted.append({
+                "manager_id": mgr_id,
+                "supabase_pts": sb_pts,
+                "official_pts": official_pts,
+                "delta": official_pts - sb_pts
+            })
+
+    if not drifted:
+        logger.info("✅ Standings Reconciliation Gate: 100% parity verified between Supabase and Official FPL Standings.")
+        return {"reconciled": True, "drifted_managers": [], "healed": False}
+
+    logger.warning(
+        f"⚠️ Standings drift detected across {len(drifted)} manager(s) in closed GWs (1..{current_gw - 1}): {drifted}. "
+        f"Triggering automatic self-healing resync..."
+    )
+    heal_res = sync_manager_picks_and_performance(
+        supabase,
+        league_entries,
+        current_gw=current_gw - 1,
+        sync_all_history=True
+    )
+    return {
+        "reconciled": True,
+        "drifted_managers": drifted,
+        "healed": True,
+        "heal_stats": heal_res
     }

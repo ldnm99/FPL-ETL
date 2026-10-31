@@ -8,9 +8,11 @@ import logging
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
+from pathlib import Path
 from typing import Dict, Any
 from dotenv import load_dotenv
 
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 load_dotenv()
 
 # Setup Logging

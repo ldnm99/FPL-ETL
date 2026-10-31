@@ -78,7 +78,7 @@ def feed_local_history(
                     "goals_scored": perf.get("goals_scored", 0),
                     "assists": perf.get("assists", 0),
                     "clean_sheets": perf.get("clean_sheets", 0),
-                    "defensive_contribution": perf.get("defensive_contribution", 0),
+                    "defensive_contribution": perf.get("defcons", perf.get("defensive_contribution", 0)),
                     "bps": perf.get("bps", 0),
                     "bonus": perf.get("bonus", 0),
                 })

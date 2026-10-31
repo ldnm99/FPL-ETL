@@ -56,6 +56,7 @@ def sync_bootstrap_data(supabase) -> int:
                 code_val = p.get("code")
                 photo_str = f"{code_val}.jpg" if code_val else None
                 photo_code_str = str(code_val) if code_val else None
+                price_val = float(p.get("draft_rank") or p.get("now_cost") or 0.0)
                 player_obj = PlayerIngest(
                     id=p["id"],
                     web_name=p["web_name"],
@@ -76,15 +77,29 @@ def sync_bootstrap_data(supabase) -> int:
             supabase.table("dim_players").upsert(validated_players).execute()
             logger.info(f"✅ Upserted {len(validated_players)} players into 'dim_players'")
 
-    # 3. Sync dim_gameweeks
-    events = data.get("events", {}).get("data", []) or data.get("events", [])
+    # 3. Sync dim_gameweeks (Respect official events.current & events.next pointers)
+    events_wrapper = data.get("events", {})
+    if isinstance(events_wrapper, dict):
+        events = events_wrapper.get("data", [])
+        api_current_gw = events_wrapper.get("current")
+        api_next_gw = events_wrapper.get("next")
+    else:
+        events = events_wrapper or []
+        api_current_gw = None
+        api_next_gw = None
+
     current_gw_id = 1
     if events and isinstance(events, list):
-        unfinished = [e for e in events if not e.get("finished", False)]
-        if unfinished:
-            current_gw_id = unfinished[0]["id"]
+        if api_current_gw is not None:
+            current_gw_id = int(api_current_gw)
         else:
-            current_gw_id = events[-1]["id"]
+            unfinished = [e for e in events if not e.get("finished", False)]
+            if unfinished:
+                current_gw_id = unfinished[0]["id"]
+            else:
+                current_gw_id = events[-1]["id"]
+
+        next_gw_id = int(api_next_gw) if api_next_gw is not None else (current_gw_id + 1)
 
         validated_gws = []
         for e in events:
@@ -94,7 +109,7 @@ def sync_bootstrap_data(supabase) -> int:
                     name=e.get("name", f"Gameweek {e['id']}"),
                     deadline_time=e.get("deadline_time"),
                     is_current=(e["id"] == current_gw_id),
-                    is_next=(e["id"] == current_gw_id + 1),
+                    is_next=(e["id"] == next_gw_id),
                     is_finished=e.get("finished", False)
                 )
                 validated_gws.append(gw_obj.model_dump())

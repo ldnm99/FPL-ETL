@@ -20,10 +20,21 @@ def sync_league_managers(supabase, league_id: str = DEFAULT_LEAGUE_ID) -> List[D
     logger.info(f"🏆 Fetching League Details for League #{league_id}...")
     data = fetch_json(f"/league/{league_id}/details")
     entries = data.get("league_entries", [])
+    standings = data.get("standings", [])
 
     if not entries:
         logger.warning(f"⚠️ No league entries found for League #{league_id}.")
         return []
+
+    # Attach official API total and event_total to each entry for downstream reconciliation
+    standings_by_entry = {
+        s.get("league_entry"): s for s in standings if isinstance(s, dict) and s.get("league_entry") is not None
+    }
+    for e in entries:
+        st = standings_by_entry.get(e.get("id"))
+        if st:
+            e["api_total"] = st.get("total")
+            e["api_event_total"] = st.get("event_total")
 
     active_manager_ids = [e["id"] for e in entries]
 

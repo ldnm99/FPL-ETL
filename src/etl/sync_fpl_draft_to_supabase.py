@@ -25,6 +25,7 @@ from src.etl.sync import (
     is_fixture_window_active,
     sync_league_managers,
     sync_manager_picks_and_performance,
+    reconcile_standings_with_official,
     update_sync_heartbeat,
     record_pipeline_audit,
 )
@@ -39,7 +40,8 @@ def main(
     loop_interval: int = 0,
     sync_all_history: bool = False,
     check_active: bool = False,
-    is_eod: bool = False
+    is_eod: bool = False,
+    target_gws_override: list = None
 ):
     mode_name = "EOD CONSOLIDATION" if is_eod else ("FULL METADATA" if full_sync else "FAST LIVE SYNC")
     logger.info("==================================================")
@@ -104,10 +106,23 @@ def main(
                     supabase,
                     entries,
                     current_gw=current_gw_id,
-                    sync_all_history=sync_all_history
+                    sync_all_history=sync_all_history,
+                    include_previous_gw=(is_eod or full_sync),
+                    target_gws_override=target_gws_override
                 )
                 picks_count = stats_res.get("picks_count", 0)
                 perf_records_count = stats_res.get("perf_records_count", 0)
+
+                # 4b. Self-Healing Standings Reconciliation Gate for Closed Gameweeks
+                if is_eod or full_sync or picks_count == 0:
+                    recon_res = reconcile_standings_with_official(
+                        supabase,
+                        entries,
+                        current_gw=current_gw_id
+                    )
+                    if recon_res.get("healed") and recon_res.get("heal_stats"):
+                        picks_count += recon_res["heal_stats"].get("picks_count", 0)
+                        perf_records_count += recon_res["heal_stats"].get("perf_records_count", 0)
 
             # 5. Update Telemetry Heartbeat & Run History Audit Ledger
             duration_ms = int((time.time() - t0) * 1000)
@@ -197,10 +212,20 @@ if __name__ == "__main__":
         except Exception:
             interval = 60
 
+    target_gws = None
+    if "--gw" in sys.argv:
+        try:
+            idx = sys.argv.index("--gw")
+            if idx + 1 < len(sys.argv):
+                target_gws = [int(x.strip()) for x in sys.argv[idx + 1].split(",") if x.strip()]
+        except Exception:
+            target_gws = None
+
     main(
         full_sync=is_full,
         loop_interval=interval,
         sync_all_history=is_history,
         check_active=is_check_active,
-        is_eod=is_eod
+        is_eod=is_eod,
+        target_gws_override=target_gws
     )
